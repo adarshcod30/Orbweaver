@@ -175,6 +175,151 @@ def peel_once(csr: CSR, scores: np.ndarray, *, lambda_: float, k_min: int,
                 internal_weight=ew, score_mass=sm, lambda_=lambda_)
 
 
+@dataclass
+class EdgeList:
+    """Undirected edges as flat arrays. One row per pair, src < dst."""
+    src: np.ndarray
+    dst: np.ndarray
+    weight: np.ndarray
+    n_nodes: int
+
+
+def peel_batch(edges: EdgeList, scores: np.ndarray, *, lambda_: float, k_min: int,
+               k_max: int | None = None, candidates: np.ndarray | None = None,
+               epsilon: float = 0.1, max_passes: int = 2000) -> Ring:
+    """Greedy peeling in batches, for graphs too large to peel one node at a time.
+
+    Exact greedy removes a single minimum-contribution vertex per step, which
+    is inherently sequential: on 35M edges that is tens of millions of heap
+    operations. This removes **every** vertex whose contribution is at or
+    below ``(1 + epsilon)`` times the mean in one pass, so each pass is
+    vectorised over the edge list and a constant fraction of the graph dies
+    per pass. It finishes in ``O(log_{1+epsilon} n)`` passes.
+
+    The bound weakens honestly in exchange: this is a
+    **2(1 + epsilon)-approximation** (Bahmani, Kumar & Vassilvitskii, VLDB
+    2012), against the ``2``-approximation of ``peel_once``. At the default
+    ``epsilon = 0.1`` that is 2.2 rather than 2. ``tests/test_peel_planted.py``
+    asserts both routines recover the same planted rings.
+    """
+    n = edges.n_nodes
+    alive = np.zeros(n, dtype=bool)
+    if candidates is None:
+        alive[:] = True
+    else:
+        alive[candidates] = True
+    if int(alive.sum()) < k_min:
+        return Ring(np.empty(0, np.int32), -np.inf, 0.0, 0.0, lambda_)
+
+    src, dst, w = edges.src, edges.dst, edges.weight
+    removed_at = np.full(n, -1, dtype=np.int32)
+    best_g, best_pass = -np.inf, 0
+
+    for p in range(max_passes):
+        n_alive = int(alive.sum())
+        if n_alive < k_min:
+            break
+        live_edge = alive[src] & alive[dst]
+        # Peeling discards most of the graph in the first few passes, but the
+        # masking above stays O(|E|) over the *original* edge count unless the
+        # arrays are physically shrunk. Compacting keeps later passes cheap.
+        n_live = int(live_edge.sum())
+        if n_live < src.size // 2:
+            src, dst, w = src[live_edge], dst[live_edge], w[live_edge]
+            live_edge = np.ones(src.size, dtype=bool)
+
+        ew = float(w[live_edge].sum())
+        sm = float(scores[alive].sum())
+        g = (ew + lambda_ * sm) / n_alive
+        # Only sets within the size band can be the answer. Without the upper
+        # bound this returns 30,000-account communities: on a graph whose
+        # 50-core still holds 454k vertices, a large region of moderate
+        # density outscores a small tight one, and neither a person nor an
+        # ops queue can act on the result.
+        if g > best_g and n_alive >= k_min and (k_max is None or n_alive <= k_max):
+            best_g, best_pass = g, p
+
+        ls, ld, lw = src[live_edge], dst[live_edge], w[live_edge].astype(np.float64)
+        deg = np.bincount(ls, weights=lw, minlength=n)
+        deg += np.bincount(ld, weights=lw, minlength=n)
+        contrib = deg + lambda_ * scores
+        contrib[~alive] = np.inf
+
+        threshold = (1.0 + epsilon) * (contrib[alive].sum() / n_alive)
+        drop = alive & (contrib <= threshold)
+        n_drop = int(drop.sum())
+        if n_drop == 0:
+            # No vertex is below the mean only when every contribution is
+            # equal; remove the single minimum so the loop still terminates.
+            drop = np.zeros(n, dtype=bool)
+            drop[int(np.argmin(np.where(alive, contrib, np.inf)))] = True
+            n_drop = 1
+        if n_alive - n_drop < k_min:
+            # Never shrink below the size floor; take the smallest allowed step.
+            order = np.argsort(np.where(alive, contrib, np.inf))
+            drop = np.zeros(n, dtype=bool)
+            drop[order[: n_alive - k_min]] = True
+            if not drop.any():
+                break
+        removed_at[drop] = p
+        alive &= ~drop
+
+    members = np.flatnonzero((removed_at == -1) | (removed_at >= best_pass)).astype(np.int32)
+    if candidates is not None:
+        keep = np.zeros(n, dtype=bool)
+        keep[candidates] = True
+        members = members[keep[members]]
+
+    # Recompute the exact totals from the ORIGINAL edge arrays. The loop
+    # compacts `src`/`dst`/`w` as vertices die, and the best set is alive at
+    # an earlier pass than the end, so edges inside it may already have been
+    # compacted away. Scoring against the compacted arrays would understate
+    # the density of every ring.
+    inside = np.zeros(n, dtype=bool)
+    inside[members] = True
+    live = inside[edges.src] & inside[edges.dst]
+    ew = float(edges.weight[live].sum())
+    sm = float(scores[members].sum())
+    return Ring(members=members, density=(ew + lambda_ * sm) / max(members.size, 1),
+                internal_weight=ew, score_mass=sm, lambda_=lambda_)
+
+
+def extract_rings_batch(edges: EdgeList, scores: np.ndarray, *, lambda_: float,
+                        k_min: int, top_k: int, g_min: float = 0.0,
+                        k_max: int | None = None,
+                        candidates: np.ndarray | None = None,
+                        epsilon: float = 0.1) -> list[Ring]:
+    """Top-K rings using batch peeling. Extract, remove, repeat."""
+    available = np.zeros(edges.n_nodes, dtype=bool)
+    if candidates is None:
+        available[:] = True
+    else:
+        available[candidates] = True
+
+    rings: list[Ring] = []
+    work = edges
+    for rank in range(top_k):
+        cand = np.flatnonzero(available)
+        if cand.size < k_min:
+            break
+        ring = peel_batch(work, scores, lambda_=lambda_, k_min=k_min,
+                          k_max=k_max, candidates=cand, epsilon=epsilon)
+        if ring.size < k_min or ring.density <= g_min:
+            break
+        ring.rank = rank + 1
+        rings.append(ring)
+        available[ring.members] = False
+
+        # Drop the extracted ring's edges from the working list. Without this
+        # every subsequent extraction rescans the full edge array and top-K
+        # costs K times a full-graph pass.
+        keep = available[work.src] & available[work.dst]
+        if int(keep.sum()) < work.src.size:
+            work = EdgeList(work.src[keep], work.dst[keep], work.weight[keep],
+                            work.n_nodes)
+    return rings
+
+
 def _subgraph_totals(csr: CSR, members: np.ndarray,
                      scores: np.ndarray) -> tuple[float, float]:
     """Exact internal edge weight and score mass for a member set."""

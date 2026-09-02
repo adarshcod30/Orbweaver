@@ -65,6 +65,7 @@ class RingsCfg(BaseModel):
     lambda_sweep: list[float]
     lambda_default: float
     k_min: int
+    k_max: int
     top_k: int
     g_min: float
     prune_tau: float

@@ -215,6 +215,53 @@ same bug with 60 % of the signal intact would have shipped.
 
 ---
 
+## 2 September — the extractor found a ring with 31,555 members
+
+**What broke:** the first real run of the ring extractor on the week-2 graph.
+The top seven results were exactly what I wanted — 51 to 226 accounts, density
+12 to 24, tight and plausible. Then rank 8 came back with **10,593 members**,
+rank 9 with 17,113, and rank 10 with **31,555**.
+
+**What I believed:** that a maximum-density objective would naturally prefer
+small tight groups, so a floor on ring size (`k_min`) was the only size
+constraint I needed. I had written `k_min = 5` and given no thought at all to
+the other end.
+
+**What it actually is:** density is a *ratio*, and a large region of moderate
+density can beat a small region of high density on that ratio. This graph has
+a very thick core — its 50-core still contains 453,983 accounts — so once
+peeling gets down into that core there is an enormous set sitting at density
+around 10, and 31,555 accounts at density 9.9 scores better than 45 accounts
+at density 9.6. The objective was working correctly. It was answering a
+question I had not meant to ask.
+
+The result is useless in exactly the way that matters: a "ring" of 31,555
+accounts is not a case anyone can review, and shipping it as a detection would
+mean recommending action against a substantial slice of the customer base.
+
+**How I got out:** added an upper bound, `k_max = 500`, and only let a set be
+recorded as the best if its size is inside `[k_min, k_max]`. This changes the
+problem from densest-at-least-k to **densest-at-most-k**, which is also
+NP-hard, and greedy peeling keeps a constant-factor bound on it. Rings now
+come out at 41 to 466 members with densities from 7 to 24.
+
+I picked 500 for a reason I can defend rather than one that maximises a
+metric: a ring is a case a human reviews as a single unit, and beyond a few
+hundred accounts it is a community, not a case. `k_max` is a config value and
+I report results across a sweep of it, so the choice is visible.
+
+`tests/test_peel_planted.py` now plants a large loose cluster next to a small
+tight one and asserts the extractor returns the tight one.
+
+**What I take from it:** I had read the warning about this exact failure —
+"the extractor returns one giant component" — and had still only guarded one
+side of the size constraint, because the objective *felt* like it preferred
+small dense things. The seven good rings above it are what made this
+dangerous: if I had looked at the top five and stopped, I would have shipped
+an extractor that produces garbage from rank 8 onward and never known.
+
+---
+
 ## 2 September — the subsample quietly destroyed the rings
 
 **What broke:** my regional subsample ran and looked healthy — 378,440 nodes,

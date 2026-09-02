@@ -62,6 +62,11 @@ rings:
   lambda_sweep: [0.0, 0.5, 1.0, 2.0, 5.0]
   lambda_default: 1.0
   k_min: 5
+  # A ring is a case a human reviews as one unit. Without an upper bound the
+  # peeler returns 30,000-account communities: the 50-core of this graph still
+  # holds 454k accounts, so a large region of moderate density outscores a
+  # small tight one. This makes it densest-at-most-k, still NP-hard.
+  k_max: 500
   top_k: 200
   g_min: 0.0
   prune_tau: 0.3

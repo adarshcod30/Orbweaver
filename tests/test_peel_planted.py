@@ -146,6 +146,110 @@ def test_camouflage_does_not_break_extraction():
     assert best >= 0.9, f"camouflage broke extraction: best Jaccard {best:.3f}"
 
 
+# --- the batch peeler, used when the graph is too large for exact greedy ----
+
+
+def planted_edge_list(**kw):
+    """Same planted graph, as a flat edge list."""
+    from orbweaver.rings.peel import EdgeList
+    csr, scores, rings, n = planted_graph(**kw)
+    u, v, w = [], [], []
+    for a in range(csr.n_nodes):
+        lo, hi = csr.indptr[a], csr.indptr[a + 1]
+        nb, ww = csr.indices[lo:hi], csr.weights[lo:hi]
+        m = nb > a
+        u.append(np.full(int(m.sum()), a)); v.append(nb[m]); w.append(ww[m])
+    return (EdgeList(np.concatenate(u).astype(np.int64),
+                     np.concatenate(v).astype(np.int64),
+                     np.concatenate(w), csr.n_nodes),
+            scores, rings, csr)
+
+
+@pytest.mark.parametrize("lam", [0.0, 1.0])
+def test_batch_peeler_recovers_planted_rings(lam):
+    from orbweaver.rings.peel import extract_rings_batch
+    edges, scores, rings, _ = planted_edge_list()
+    got = extract_rings_batch(edges, scores, lambda_=lam, k_min=5, top_k=3)
+    assert len(got) == 3
+    for planted in rings:
+        best = max(jaccard(planted, r.members) for r in got)
+        assert best >= 0.9, f"batch peeler missed a ring: Jaccard {best:.3f}"
+
+
+def test_batch_and_exact_peelers_agree():
+    """The batch peeler trades a 2-approximation for 2(1+epsilon). It must
+    still find the same rings here, or the speedup is not free."""
+    from orbweaver.rings.peel import extract_rings_batch
+    edges, scores, rings, csr = planted_edge_list()
+    exact = extract_rings(csr, scores, lambda_=1.0, k_min=5, top_k=3)
+    batch = extract_rings_batch(edges, scores, lambda_=1.0, k_min=5, top_k=3)
+    assert len(exact) == len(batch)
+    for a, b in zip(exact, batch):
+        assert jaccard(a.members, b.members) >= 0.9
+        # Batch density may be slightly lower; it must never be higher by
+        # more than float noise, since exact greedy is the stronger bound.
+        assert b.density <= a.density * 1.001
+
+
+def test_batch_peeler_respects_k_min():
+    from orbweaver.rings.peel import extract_rings_batch
+    edges, scores, _, _ = planted_edge_list()
+    for r in extract_rings_batch(edges, scores, lambda_=1.0, k_min=25, top_k=3):
+        assert r.size >= 25
+
+
+def test_k_max_prevents_the_giant_blob():
+    """Once the genuinely tight rings are extracted and removed, the densest
+    thing left is a big mediocre region, and without an upper size bound the
+    extractor happily returns it as the next "ring". On the real week-2 graph
+    ranks 1-7 were 51-226 accounts and rank 8 was 10,593.
+
+    Plant one tight clique inside a large loose region and check the second
+    ring, which is where the failure actually shows up.
+    """
+    from orbweaver.rings.peel import EdgeList, extract_rings_batch
+    rng = np.random.default_rng(3)
+    n_blob, n_tight = 4_000, 40
+    n = n_blob + n_tight
+
+    # Large region, density ~9.9: lower than the clique, so it loses at rank 1
+    # and surfaces at rank 2 - exactly the real failure.
+    m = n_blob * 11
+    bs = rng.integers(0, n_blob, size=m)
+    bd = rng.integers(0, n_blob, size=m)
+    ok = bs != bd
+    bs, bd, bw = bs[ok], bd[ok], np.full(int(ok.sum()), 0.9)
+
+    # Small dense clique, density ~19.3.
+    tight = np.arange(n_blob, n)
+    i, j = np.triu_indices(n_tight, k=1)
+    ts, td = tight[i], tight[j]
+    tw = np.full(ts.size, 0.99)
+
+    src = np.concatenate([bs, ts]).astype(np.int64)
+    dst = np.concatenate([bd, td]).astype(np.int64)
+    w = np.concatenate([bw, tw])
+    lo, hi = np.minimum(src, dst), np.maximum(src, dst)
+    _, first = np.unique(lo * n + hi, return_index=True)
+    edges = EdgeList(lo[first], hi[first], w[first], n)
+    scores = np.zeros(n)
+
+    unbounded = extract_rings_batch(edges, scores, lambda_=0.0, k_min=5, top_k=2)
+    bounded = extract_rings_batch(edges, scores, lambda_=0.0, k_min=5,
+                                  k_max=500, top_k=2)
+
+    # Both must find the real ring first.
+    assert jaccard(tight, unbounded[0].members) >= 0.9
+    assert jaccard(tight, bounded[0].members) >= 0.9
+
+    # The second ring is where it goes wrong.
+    assert unbounded[1].size > 1_000, (
+        "fixture no longer reproduces the blob: the unbounded peeler should "
+        "return the whole loose region once the clique is removed")
+    assert bounded[1].size <= 500
+    assert all(r.size <= 500 for r in bounded)
+
+
 def test_empty_and_tiny_inputs():
     csr = build_csr(np.array([0]), np.array([1]), np.array([0.5]), 2)
     scores = np.array([0.9, 0.9])
