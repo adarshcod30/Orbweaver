@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from eval.metrics import evaluate, ltv_proxy
@@ -34,6 +35,17 @@ def main() -> None:
 
     result = fit_scorer(cfg, split)
     scores = result.scores
+
+    # Persist the scores here, not only the metrics. Everything downstream -
+    # ring extraction, the hostel test, the adversarial runs - reads this file,
+    # so a pipeline that reported scores without writing them left the next
+    # stage with nothing to open.
+    pa_tbl = pa.table({
+        "user_id": pa.array(np.arange(scores.size, dtype=np.int32)),
+        "score": pa.array(scores.astype(np.float32)),
+        "raw_score": pa.array(result.raw_scores.astype(np.float32)),
+    })
+    pq.write_table(pa_tbl, proc / "scores_week2.parquet", compression="zstd")
 
     # Customer-value proxy from the early window's order counts. An
     # assumption, and labelled as one wherever it appears.
