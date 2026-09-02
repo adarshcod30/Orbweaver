@@ -307,6 +307,55 @@ in the numbers can never again be two different objects.
 
 ---
 
+## 2 September — I gave up on the generalisation check too early
+
+**What broke:** my first attempt at running on other datasets got nowhere.
+GADBench distributes its ten datasets as one Google Drive bundle, the link does
+not script cleanly, and the GitHub API rate-limited me while I was poking at the
+repository. I recorded it as blocked, substituted a comparison against the
+PromoGuardian authors' own graph, and moved on.
+
+**What I believed:** that the data was behind an obstacle I could not remove in
+the time available, and that a different comparison tested the same property
+well enough.
+
+**What it actually was: two separate mistakes, both mine.**
+
+First, I had fetched `README.md` and got a 404, twice, and read that as the
+repository being awkward. The file is called `readme.md`. Lowercase. I never
+listed the directory to check.
+
+Second, and more useful: when I did find the bundle, it turned out to be in
+DGL's serialisation format — `dgl.data.utils.load_graphs` — which I cannot
+read on this machine for exactly the reason the authors' checkpoint failed.
+That part was a real blocker. But the datasets are not *originally* GADBench's.
+Amazon and YelpChi come from CARE-GNN (Dou et al., CIKM 2020) and are published
+there as `.mat` files, sitting in the repository itself, 44 MB, no Drive link,
+readable by scipy in one line. The obstacle was the packaging, not the data,
+and I had stopped at the packaging.
+
+**What it was worth:** the central finding of the whole project replicates on
+both, independently. Unpruned, the extractor lands at 0.57× the base rate on
+Amazon and at **exactly zero** on YelpChi — 25 rings, 1,914 accounts, not one
+fraudster among them. With the score cut-off: 14.3× and 6.9×. Three datasets
+from three unrelated platforms now say the same thing, and that is a far
+stronger claim than one dataset could support.
+
+It also put PPA's difficulty in perspective, which I had been reading as a
+limitation of my method. Node scoring reaches AUPRC 0.76 and 0.86 on these
+against 0.38 on PPA, because both ship real node features and PPA ships none at
+all. YelpChi's strongest relation carries a 49.8× fraud lift where PPA's best
+is 3.7×.
+
+**What I take from it:** "the data is behind a Google Drive link" was a
+description of one distribution channel, not of the data. I checked whether
+*that* path worked and concluded the check was infeasible, when the actual
+question was where the datasets originally came from — which was one search
+away. Being blocked by a format is a fact; being blocked by the first
+packaging you tried is a decision.
+
+---
+
 ## 2 September — I could not run the authors' checkpoint, and stopped trying
 
 **What I wanted:** to run PromoGuardian's released checkpoint on the same graph
