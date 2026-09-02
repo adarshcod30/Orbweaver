@@ -120,6 +120,23 @@ delivery record that only nine accounts on the platform have ever used" is
 evidence. "All eleven share a coupon type" is not, when 97.5% of the platform
 shares it too.
 
+## What comes out
+
+Two views on the same `ring_report.json`, so neither can disagree with
+`docs/results.md`:
+
+- **`docs/case-files.html`** — a standalone page, one card per ring, sorted by
+  money at stake. No server, no build step; this is the artefact an analyst
+  could be handed.
+- **`make console`** — the same data with filtering and drill-down, for a
+  review queue working through it. FastAPI serving HTML fragments to HTMX, so
+  there is still no build step and no JavaScript bundle.
+
+Each ring leads with its strongest evidence and how rare that evidence is
+platform-wide, because coverage without rarity is meaningless: 61% of one
+38-account ring share a sales stimulation that only 35 accounts on the entire
+platform have ever used, and that single line is the case.
+
 ## What is measured, and how
 
 - **Account-disjoint.** Held-out accounts appear in no training or calibration
