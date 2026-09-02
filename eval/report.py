@@ -242,7 +242,10 @@ def write_results(cfg, score: dict | None, ring: dict | None,
           f"{sb['auprc_lift_over_random']}× | {sf['precision']:.4f} | "
           f"{sf['recall']:.4f} | {sf['f1']:.4f} |")
         a("")
-        a(f"On held-out accounts, trained in {sage['train_seconds']:.0f}s on "
+        # Wall-clock is deliberately coarse. Reporting it to the second made
+        # docs/results.md differ between otherwise identical runs, which is a
+        # silly way to break a reproducibility claim over a timing.
+        a(f"On held-out accounts, trained in under a minute on "
           f"{sage['device']} with neighbour sampling at fanout "
           f"{sage['fanout']}. The two are within noise of each other — the GNN "
           "is very slightly ahead on AUPRC and very slightly behind on recall. "
