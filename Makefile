@@ -32,7 +32,16 @@ weights:  ## fit per-relation edge weights on training accounts only
 	$(PY) -m orbweaver.data.relation_weights
 
 windows:  ## split week 2 into early/late and build a graph and features for each
-	$(PY) -m orbweaver.data.windows
+	$(PY) -u -m orbweaver.data.windows
+
+# The relation weights are fitted FROM the early-window graph, and that graph
+# is then rebuilt WITH them applied. That is circular, so it is resolved by
+# building once with neutral weights, fitting, and rebuilding. Both steps live
+# in one target because make would otherwise run `windows` only once.
+windows-weighted:  ## bootstrap the windows, fit relation weights, rebuild
+	$(PY) -u -m orbweaver.data.windows
+	$(PY) -u -m orbweaver.data.relation_weights
+	$(PY) -u -m orbweaver.data.windows
 
 subsample:  ## entity-anchored development subsample
 	$(PY) -m orbweaver.data.subsample
@@ -73,8 +82,7 @@ check:  ## tests plus the pre-push check on committed prose
 	$(PY) -m pytest tests/ -q
 	./scripts/voice_check.sh
 
-# The full path from raw files to the numbers in the documentation.
-# `weights` is fitted before `windows` because the graph applies it.
+# Every stage from the raw files to the numbers in the documentation.
 reproduce: data graph windows-weighted test score rings hostel views adversarial overlay report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
