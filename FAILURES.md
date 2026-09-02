@@ -307,6 +307,47 @@ in the numbers can never again be two different objects.
 
 ---
 
+## 2 September — the one part of the pipeline that was not reproducible
+
+**What broke:** with everything else pinned down, I re-ran `make reproduce`
+end to end and diffed the regenerated documentation against what was
+published. One line moved. The GraphSAGE row: held-out AUPRC 0.3825 became
+0.3830. Every other number in the file was identical.
+
+**What I believed:** that I had already settled the determinism question. I
+had checked it carefully earlier — the graph and both feature tables are
+bit-identical across machines, XGBoost reproduces exactly at one thread and at
+ten — and concluded the pipeline was deterministic and an artefact had simply
+been stale. That was true, and I had checked only the components that were
+stale.
+
+**What it actually is:** the GNN trains on MPS, and Metal's scatter reductions
+accumulate in a non-deterministic order. Running it three times gave 0.3825,
+0.3830 and 0.3833.
+
+I isolated it rather than guessing: twelve identical training batches, same
+seeds, same data, run twice on each device. CPU produced bit-identical losses
+both times. MPS diverged at batch 7, by 6e-8 — floating-point addition order
+in the aggregation kernel, amplified over three epochs into the third decimal
+place of AUPRC.
+
+**How I got out:** the GNN now runs on CPU by default, which reproduces
+exactly — two full runs give AUPRC 0.3819 and identical precision, recall and
+F1 to four decimals. `ORBWEAVER_SAGE_DEVICE=mps` still gets the roughly 3x
+faster run for anyone who wants it. The cost of the change is about two extra
+minutes and nothing else: 0.001 of AUPRC never came close to changing the
+conclusion, which is that the GNN ties the gradient-boosted model.
+
+**What I take from it:** this one is uncomfortable because the deviation was
+so small. A difference in the third decimal is exactly the size that gets
+waved through as noise, and had I not diffed the whole file I would never have
+looked at it. It also would have been easy to argue it did not matter — it
+genuinely does not change any result — and to leave a stated principle
+quietly false. Reproducible has to mean reproducible, or it means whatever is
+convenient at the time.
+
+---
+
 ## 2 September — I gave up on the generalisation check too early
 
 **What broke:** my first attempt at running on other datasets got nowhere.

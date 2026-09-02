@@ -31,9 +31,9 @@ Same split, same features, same window. The GNN can propagate along edges rather
 | scorer | AUPRC | lift | precision | recall | F1 |
 |---|---:|---:|---:|---:|---:|
 | XGBoost, 39 features | 0.3796 | 1.693× | 0.3072 | 0.7415 | 0.4344 |
-| GraphSAGE, 2 layers | 0.3825 | 1.706× | 0.3141 | 0.7121 | 0.4359 |
+| GraphSAGE, 2 layers | 0.3819 | 1.703× | 0.3139 | 0.7079 | 0.4349 |
 
-On held-out accounts, trained in 58s on mps with neighbour sampling at fanout [15, 10]. The two are within noise of each other — the GNN is very slightly ahead on AUPRC and very slightly behind on recall. That matches GADBench's finding that gradient boosting over graph-aggregated features is hard to beat on real anomaly graphs, and it means the choice of scorer is not where the value in this pipeline sits. I kept XGBoost as the default because it trains in a minute, its feature importances are readable, and neither result justifies the extra dependency.
+On held-out accounts, trained in 41s on cpu with neighbour sampling at fanout [15, 10]. The two are within noise of each other — the GNN is very slightly ahead on AUPRC and very slightly behind on recall. That matches GADBench's finding that gradient boosting over graph-aggregated features is hard to beat on real anomaly graphs, and it means the choice of scorer is not where the value in this pipeline sits. I kept XGBoost as the default because it trains in a minute, its feature importances are readable, and neither result justifies the extra dependency.
 
 ## What each shared entity is worth
 

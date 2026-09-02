@@ -33,9 +33,24 @@ from orbweaver.features.node_features import FEATURE_NAMES
 
 
 def pick_device():
-    """MPS where it works, CPU otherwise. Neighbour sampling keeps CPU viable."""
+    """CPU by default, because it is the only one that reproduces exactly.
+
+    Metal's scatter reductions accumulate in a non-deterministic order, so the
+    same seed on MPS gives a slightly different model every run. Measured:
+    twelve identical training batches diverge at batch 7 by 6e-8, and across
+    full runs held-out AUPRC moved between 0.3825 and 0.3833. That is far too
+    small to change any conclusion here, and still enough to break the promise
+    that a run is reproducible, so the default is the device that keeps it.
+
+    Set ORBWEAVER_SAGE_DEVICE=mps for the roughly 3x faster run when exact
+    reproducibility is not what you need.
+    """
+    import os
+
     import torch
-    if torch.backends.mps.is_available():
+
+    want = os.environ.get("ORBWEAVER_SAGE_DEVICE", "cpu").lower()
+    if want == "mps" and torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
 
