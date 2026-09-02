@@ -133,7 +133,8 @@ def relation_lift_chart(weights: dict, out: Path) -> Path | None:
     return dest
 
 
-def adversarial_chart(frag: dict, adv: dict | None, out: Path) -> Path | None:
+def adversarial_chart(frag: dict, adv: dict | None, out: Path,
+                      twins: dict | None = None) -> Path | None:
     """Two ways an attacker can adapt, and what each costs the detector."""
     r = frag["results"]
     cells = [(v["cell_size"], v["ring_precision"]) for k, v in r.items()
@@ -155,6 +156,19 @@ def adversarial_chart(frag: dict, adv: dict | None, out: Path) -> Path | None:
     ax.annotate(f"intact  {intact}", xy=(cells[-1][0], intact),
                 xytext=(0, 5), textcoords="offset points",
                 fontsize=8, color=INK, ha="right")
+    if twins:
+        tw = [(v["cell_size"], v["with_twins"]["ring_precision"])
+              for k, v in twins["fragmentation"].items()
+              if v.get("cell_size") and v["with_twins"].get("ring_precision")]
+        if tw:
+            tw.sort()
+            ax.plot([c for c, _ in tw], [p for _, p in tw], marker="s",
+                    color="#0369a1", linewidth=1.8, markersize=5,
+                    label="with behaviour edges")
+            ax.plot([c for c, _ in cells], [p for _, p in cells], marker="o",
+                    color=ACCENT, linewidth=1.8, markersize=6,
+                    label="shared entities only")
+            ax.legend(frameon=False, fontsize=9)
     ax.set_xlabel("cell size the ring was broken into", fontsize=10, color=INK)
     ax.set_ylabel("ring precision", fontsize=10, color=INK)
     ax.set_title("Fragmentation", color=INK, fontsize=12, loc="left", pad=10)
@@ -1025,6 +1039,77 @@ def write_results(cfg, score: dict | None, ring: dict | None,
           "instead of escaping it. Fragmentation is the attack that works; "
           "copying yourself is not.\n")
 
+    tw = None
+    twp = proc / "twins.json"
+    if twp.exists():
+        tw = json.loads(twp.read_text())
+    if tw and tw.get("fragmentation"):
+        a("## Edges an attacker cannot cut\n")
+        a("Fragmentation works, and it works for a specific reason: it deletes "
+          "the shared entities that tie a group together and leaves the "
+          "members' behaviour untouched. Fifty accounts that order the same way "
+          "at the same times are still doing that after every address and "
+          "promotion they had in common has been severed.\n")
+        t = tw["twins"]
+        w = t["weight"]
+        a(f"So this adds a relation the attacker's move does not touch: mutual "
+          f"five-nearest-neighbour edges in behaviour space, among the "
+          f"**{t['candidates']:,} accounts the scorer already flagged** — "
+          f"{t['twin_edges']:,} edges. Confining them to flagged accounts is "
+          "deliberate; behaviour similarity across the whole population would "
+          "link millions of ordinary customers who happen to shop alike.\n")
+        if w.get("measured"):
+            a(f"They are weighted by the same rule as every entity relation: "
+              f"their measured fraud–fraud lift on training accounts, "
+              f"**{w['lift']}×**, times the median entity edge weight, giving "
+              f"{w['weight']}. That lift is worth reading next to the entity "
+              "relations — a shared location is 3.71× and a shared promotion "
+              "1.76×, so behaving alike is much weaker evidence than sharing "
+              "anything concrete. No constant here was chosen by hand.\n")
+        a("Twins are added **after** the cuts, because that is the order the "
+          "attack happens in.\n")
+        a("| ring broken into cells of | shared entities only | with behaviour edges | recovered |")
+        a("|---|---:|---:|---:|")
+        for key, row in tw["fragmentation"].items():
+            wo = row["without_twins"]["ring_precision"]
+            wi = row["with_twins"]["ring_precision"]
+            label = "intact" if row["cell_size"] is None else str(row["cell_size"])
+            a(f"| {label} | {wo} | {wi} | {wi - wo:+.4f} |")
+        a("")
+        gains = {("intact" if row["cell_size"] is None else row["cell_size"]):
+                 row["with_twins"]["ring_precision"] - row["without_twins"]["ring_precision"]
+                 for row in tw["fragmentation"].values()}
+        best_k = max(gains, key=gains.get)
+        worst_k = min(gains, key=gains.get)
+        a(f"**A partial recovery, and not a clean one.** The largest gain is "
+          f"{gains[best_k]:+.4f} at cells of {best_k}, which is where it should "
+          "be: the most aggressive fragmentation destroys the most entity "
+          "structure and leaves the most behaviour to find. Twins also do not "
+          "damage the undamaged graph — they improve it slightly — which was "
+          "the thing to check, since adding a weak relation everywhere could "
+          "easily have cost more than it returned.\n")
+        if gains[worst_k] < 0:
+            a(f"But the effect is not monotonic and I am not going to present "
+              f"it as though it were. At cells of {worst_k} the twins make "
+              f"things **{gains[worst_k]:+.4f} worse**. Behaviour edges are "
+              "weak enough that at mild fragmentation they add roughly as much "
+              "noise as signal, and only earn their place once enough entity "
+              "structure has been cut away that there is little else left.\n")
+        a("What this does not do is restore the curve. Cells of three still "
+          "cost far more precision than they recover, so fragmentation remains "
+          "the attack that works. Behaviour edges raise its price rather than "
+          "defeating it, and the reason is visible in the lift: behaving alike "
+          "is genuinely weaker evidence than sharing a delivery record, and no "
+          "weighting scheme can make it stronger than it is.\n")
+        h = tw.get("hostel_test_with_twins") or {}
+        if h.get("clusters_found"):
+            a(f"The population this could have hurt is the legitimate "
+              f"co-located clusters, since behaviour edges link people who act "
+              f"alike and a hostel is full of them. With twins present, "
+              f"**{h['clusters_with_a_member_in_a_ring']} of "
+              f"{h['clusters_found']:,}** are touched "
+              f"({h['share_of_clusters_touched']:.2%}).\n")
+
     hostel = None
     hp = proc / "hostel_test.json"
     if hp.exists():
@@ -1167,9 +1252,11 @@ def main() -> None:
     fragj = proc / "fragmentation.json"
     advj = proc / "adversarial_rounds.json"
     if fragj.exists():
+        twj = proc / "twins.json"
         d = adversarial_chart(json.loads(fragj.read_text()),
                               json.loads(advj.read_text()) if advj.exists() else None,
-                              figs)
+                              figs,
+                              json.loads(twj.read_text()) if twj.exists() else None)
         if d:
             figures.append(d)
 

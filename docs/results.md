@@ -331,6 +331,32 @@ Following the published protocol: each round duplicates the fraud accounts that 
 
 What the protocol does show is that duplication is a poor attack on a *ring* detector specifically. A cloned account inherits its original's edges, so it lands inside the same dense structure instead of escaping it. Fragmentation is the attack that works; copying yourself is not.
 
+## Edges an attacker cannot cut
+
+Fragmentation works, and it works for a specific reason: it deletes the shared entities that tie a group together and leaves the members' behaviour untouched. Fifty accounts that order the same way at the same times are still doing that after every address and promotion they had in common has been severed.
+
+So this adds a relation the attacker's move does not touch: mutual five-nearest-neighbour edges in behaviour space, among the **78,089 accounts the scorer already flagged** — 97,016 edges. Confining them to flagged accounts is deliberate; behaviour similarity across the whole population would link millions of ordinary customers who happen to shop alike.
+
+They are weighted by the same rule as every entity relation: their measured fraud–fraud lift on training accounts, **1.2472×**, times the median entity edge weight, giving 0.230439. That lift is worth reading next to the entity relations — a shared location is 3.71× and a shared promotion 1.76×, so behaving alike is much weaker evidence than sharing anything concrete. No constant here was chosen by hand.
+
+Twins are added **after** the cuts, because that is the order the attack happens in.
+
+| ring broken into cells of | shared entities only | with behaviour edges | recovered |
+|---|---:|---:|---:|
+| intact | 0.7292 | 0.7458 | +0.0166 |
+| 3 | 0.4539 | 0.4776 | +0.0237 |
+| 5 | 0.5109 | 0.5114 | +0.0005 |
+| 10 | 0.5444 | 0.5546 | +0.0102 |
+| 20 | 0.5846 | 0.5823 | -0.0023 |
+
+**A partial recovery, and not a clean one.** The largest gain is +0.0237 at cells of 3, which is where it should be: the most aggressive fragmentation destroys the most entity structure and leaves the most behaviour to find. Twins also do not damage the undamaged graph — they improve it slightly — which was the thing to check, since adding a weak relation everywhere could easily have cost more than it returned.
+
+But the effect is not monotonic and I am not going to present it as though it were. At cells of 20 the twins make things **-0.0023 worse**. Behaviour edges are weak enough that at mild fragmentation they add roughly as much noise as signal, and only earn their place once enough entity structure has been cut away that there is little else left.
+
+What this does not do is restore the curve. Cells of three still cost far more precision than they recover, so fragmentation remains the attack that works. Behaviour edges raise its price rather than defeating it, and the reason is visible in the lift: behaving alike is genuinely weaker evidence than sharing a delivery record, and no weighting scheme can make it stronger than it is.
+
+The population this could have hurt is the legitimate co-located clusters, since behaviour edges link people who act alike and a hostel is full of them. With twins present, **3 of 2,446** are touched (0.12%).
+
 ## The hostel test
 
 In India a shared delivery address is routinely a hostel, a paying-guest place, an office or a joint family. A detector that cannot tell one of those from a fraud ring is not deployable, so this looks for the population that most resembles a ring without being one: groups sharing a location entity, big enough to look coordinated, whose labelled members are overwhelmingly normal.
