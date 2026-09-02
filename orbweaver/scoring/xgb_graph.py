@@ -49,6 +49,11 @@ class ScoringResult:
     n_train: int
     n_val: int
     best_iteration: int | None
+    # The fitted objects themselves. A nightly run has to apply the model it
+    # already had to whatever it can see today; refitting per night would be
+    # a different, easier problem and would leak the future into the past.
+    model: object | None = None
+    calibrator: object | None = None
 
 
 def load_features(week: int, cfg: Config, n_users: int,
@@ -115,6 +120,7 @@ def fit_scorer(cfg: Config | None = None, split: Split | None = None) -> Scoring
         feature_importance={k: round(v, 5) for k, v in importance.items()},
         n_train=int(split.train.size), n_val=int(split.val.size),
         best_iteration=getattr(model, "best_iteration", None),
+        model=model, calibrator=iso,
     )
 
 
@@ -137,4 +143,49 @@ def score_and_save(cfg: Config | None = None) -> Path:
         "seed": cfg.seed,
         "feature_importance": result.feature_importance,
     }, indent=2))
+
+    save_scorer(result, cfg)
     return dest
+
+
+def save_scorer(result: ScoringResult, cfg: Config | None = None) -> Path:
+    """Write the model and its calibrator so they can be reapplied later.
+
+    Anything that replays the window needs the model that was already fitted,
+    not a fresh one. XGBoost's own JSON format keeps this readable and avoids
+    a pickle; the isotonic calibrator is a monotone step function, so its knots
+    are enough to rebuild it exactly.
+    """
+    cfg = cfg or load_config()
+    proc = cfg.abs_path(cfg.paths.processed)
+    proc.mkdir(parents=True, exist_ok=True)
+    result.model.save_model(proc / "scorer.json")
+    iso = result.calibrator
+    (proc / "calibrator.json").write_text(json.dumps({
+        "x": np.asarray(iso.X_thresholds_).tolist(),
+        "y": np.asarray(iso.y_thresholds_).tolist(),
+        "y_min": float(iso.y_min), "y_max": float(iso.y_max),
+    }))
+    return proc / "scorer.json"
+
+
+def load_scorer(cfg: Config | None = None):
+    """The persisted model and a callable that applies its calibration."""
+    import xgboost as xgb
+
+    cfg = cfg or load_config()
+    proc = cfg.abs_path(cfg.paths.processed)
+    model = xgb.XGBClassifier()
+    model.load_model(proc / "scorer.json")
+    knots = json.loads((proc / "calibrator.json").read_text())
+    x, y = np.asarray(knots["x"]), np.asarray(knots["y"])
+
+    def calibrate(raw: np.ndarray) -> np.ndarray:
+        return np.clip(np.interp(raw, x, y), knots["y_min"], knots["y_max"])
+
+    return model, calibrate
+
+
+def score_features(model, calibrate, X: np.ndarray) -> np.ndarray:
+    """Calibrated scores for a feature matrix, using an already-fitted model."""
+    return calibrate(model.predict_proba(X)[:, 1]).astype(np.float32)

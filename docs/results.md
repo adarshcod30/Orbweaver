@@ -130,6 +130,29 @@ On Amazon the unpruned extractor lands at 0.573× the base rate and on YelpChi a
 
 Account-disjoint and stratified, but NOT forward in time: these files carry no timestamps. Rarity is approximated from endpoint degree because the entity ids are not recoverable from an adjacency.
 
+## Watching the window day by day
+
+Everything above is forensic: it takes a window that has already happened and finds the rings in it. That is a fair way to measure the method and it is not how it would be used. So this replays the scoring window one night at a time — each night rebuilds the graph and features from the days up to that night only, applies the model **already fitted on the earlier window** (nothing is refitted, because a system running on the 25th cannot use a model trained on the 28th), and peels at the standard operating point.
+
+| nights of data | edges | rings | accounts surfaced | share worth reviewing | real customers per catch | seconds |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 8,094,116 | 25 | 1,271 | 0.2045 | 3.891 | 51 |
+| 2 | 16,895,955 | 25 | 1,849 | 0.4869 | 1.054 | 79 |
+| 3 | 25,921,810 | 25 | 1,368 | 0.6098 | 0.64 | 112 |
+| 4 | 35,701,750 | 25 | 1,638 | 0.7292 | 0.371 | 156 |
+
+**One night of data is not enough.** With a single night the queue is at 0.2045 against a base rate of 0.2242 — no better than picking accounts at random — and it costs 3.891 real customers for every fraudster caught. By the fourth night it is 0.7292 at 0.371, which is a tenfold improvement in the cost of being wrong. The method needs a few days of accumulated structure before it has anything to say, and that is a real operational constraint rather than a tuning problem.
+
+A nightly snapshot takes about 96 seconds end to end — build, score and peel — on a laptop, so running this every night is not the expensive part of operating it.
+
+### The thing I could not measure
+
+I wanted to report days-to-detection per ring: the night each of the final rings first became visible. That turns out not to be answerable, and the reason is worth more than the number would have been.
+
+**Ring identity does not survive a night.** Matching each final ring against every ring from an earlier night, the best overlap reached is a median of 0.124 and a maximum of 0.359, against the 0.5 I required to call it the same group. Not one of the 25 final rings had a recognisable predecessor. Peeling is a global optimisation, so a night of new edges shifts densities everywhere and the top rings are recomposed rather than extended — the accounts do not vanish, the grouping does.
+
+So the honest version of the question drops group identity and asks how much of each final ring was already being surfaced *somewhere* on an earlier night. By that measure **28% of the final rings had half their members already inside some surfaced ring before the last night**, and at that point 37% of their promotion spend was still ahead of them. That is the number a team could act on, and it is much weaker than the one I set out to report.
+
 ## What the relations I cannot rebuild are worth
 
 Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:
@@ -267,6 +290,8 @@ The separator is the **account score**, not the structure — the touched cluste
 ![ring_precision_grid](figures/ring_precision_grid.png)
 
 ![relation_lift](figures/relation_lift.png)
+
+![time_to_detection](figures/time_to_detection.png)
 
 ![merchant_vs_platform](figures/merchant_vs_platform.png)
 

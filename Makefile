@@ -5,7 +5,7 @@ PY := python3
 .DEFAULT_GOAL := help
 .PHONY: help setup download schema data graph windows weights features subsample \
         windows-weighted score sage rings rings-deep hostel views adversarial overlay generalise \
-        download-gadbench merchant-view report reproduce reproduce-core test clean
+        download-gadbench merchant-view replay report reproduce reproduce-core test clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -79,6 +79,9 @@ generalise:  ## run the whole pipeline on Amazon and YelpChi
 merchant-view:  ## what one business sees against what the platform sees
 	$(PY) -u -m eval.merchant_view
 
+replay:  ## replay the scoring window one night at a time
+	$(PY) -u -m eval.replay
+
 sage:  ## optional GraphSAGE scorer, reported beside the default one
 	$(PY) -u -m orbweaver.scoring.sage
 
@@ -99,7 +102,7 @@ check:  ## tests plus the pre-push check on committed prose
 # Every stage from the raw files to the numbers in the documentation.
 reproduce-core: schema data graph windows-weighted test score sage rings rings-deep hostel views adversarial overlay generalise report  ## the core pipeline on its own, about 50 min
 
-reproduce: reproduce-core merchant-view report  ## everything, end to end
+reproduce: reproduce-core merchant-view replay report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

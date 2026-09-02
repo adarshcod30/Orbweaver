@@ -307,6 +307,56 @@ in the numbers can never again be two different objects.
 
 ---
 
+## 3 September — rings do not survive the night
+
+**What broke:** I set out to report days-to-detection — for each ring the last
+night finds, the night it first became visible. The replay ran cleanly, and the
+answer came back that every single ring was first detected on the last night.
+Nought per cent seen earlier.
+
+**What I believed:** that a ring accumulates. Members join over the days, the
+group gets denser, and by the final night it is the same group it was on night
+two with more people in it. Matching a final ring against earlier nights at
+half its members overlapping seemed generous — I picked 0.5 precisely because I
+expected partial rings to be the normal case and did not want to miss them.
+
+**What it actually is:** ring identity does not persist between nights at all.
+Measuring the best overlap each final ring achieves against any ring from an
+earlier night, the median is **0.124** and the maximum across all 25 is
+**0.359** — never once reaching the 0.5 I asked for, and not close.
+
+The reason is in the algorithm rather than in the data. Peeling maximises a
+global density ratio, so it is not tracking groups, it is re-solving an
+optimisation. A night of new edges changes densities across the whole graph, a
+different set of accounts survives to the top of the queue, and the top-25
+rings are recomposed rather than extended. The accounts are still there. The
+grouping is not.
+
+**How I got out — and it is a weaker result.** I dropped group identity from
+the question and asked instead how much of each final ring was already being
+surfaced *somewhere* on an earlier night, which needs no matching. On that
+measure 28% of the final rings had half their members already inside some
+surfaced ring before the last night, with 37% of their promotion spend still
+ahead of them at that point. That is what a team could act on, and it is a long
+way short of "this ring was visible on night two".
+
+There is a genuine result next to it, which I nearly buried under the one that
+failed. Precision by nights of data goes 0.2045 → 0.4869 → 0.6098 → 0.7292,
+and the cost of being wrong goes 3.891 real customers per catch down to 0.371.
+**With one night of data the system is at the base rate and worthless.** It
+needs three or four days of accumulated structure before it is worth running,
+which is an operational constraint I would have had no way of stating without
+the replay.
+
+**What I take from it:** I had also written a bug that would have hidden this.
+The overlap variable was initialised at 1.0 and only written on a match, so
+every unmatched ring reported a perfect 1.0 overlap. I only caught it because
+"100% of rings matched at exactly 1.0" is not a distribution any real
+measurement produces. Had I initialised it at 0.0 the output would have looked
+merely disappointing rather than absurd, and I might have believed it.
+
+---
+
 ## 2 September — the one part of the pipeline that was not reproducible
 
 **What broke:** with everything else pinned down, I re-ran `make reproduce`

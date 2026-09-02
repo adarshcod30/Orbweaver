@@ -181,6 +181,59 @@ def adversarial_chart(frag: dict, adv: dict | None, out: Path) -> Path | None:
     return dest
 
 
+def replay_chart(rep: dict, out: Path) -> Path | None:
+    """How much a night of extra data is worth, and how little ring identity
+    survives from one night to the next."""
+    snaps = rep.get("snapshots") or []
+    if not snaps:
+        return None
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160)
+
+    ax = axes[0]
+    _style(ax)
+    days = [s["days_of_data"] for s in snaps]
+    prec = [s["ring_precision"] for s in snaps]
+    cost = [s["normal_flagged_per_fraud_caught"] for s in snaps]
+    ax.plot(days, prec, marker="o", color=ACCENT, linewidth=1.8, markersize=6,
+            label="share worth reviewing")
+    ax.set_xlabel("nights of data", fontsize=10, color=INK)
+    ax.set_ylabel("ring precision", fontsize=10, color=INK)
+    ax.set_xticks(days)
+    ax2 = ax.twinx()
+    ax2.plot(days, cost, marker="s", color="#0369a1", linewidth=1.6,
+             markersize=5, linestyle="--", label="real customers per catch")
+    ax2.set_ylabel("real customers per catch", fontsize=10, color="#0369a1")
+    ax2.tick_params(colors="#0369a1", labelsize=9)
+    for sp in ("top",):
+        ax2.spines[sp].set_visible(False)
+    ax.set_title("What another night of data buys", color=INK, fontsize=12,
+                 loc="left", pad=10)
+
+    ax = axes[1]
+    _style(ax)
+    det = rep.get("detection") or []
+    if det:
+        last = max(int(k) for k in det[0]["best_ring_overlap_by_day"])
+        xs = sorted(int(k) for k in det[0]["member_share_already_surfaced_by_day"])
+        shares = [[r["member_share_already_surfaced_by_day"][str(d)] for r in det]
+                  for d in xs]
+        ax.boxplot(shares, positions=range(1, len(xs) + 1), widths=0.5,
+                   medianprops=dict(color=ACCENT, linewidth=1.8),
+                   flierprops=dict(marker=".", markersize=3, color=MUTED))
+        ax.set_xticks(range(1, len(xs) + 1))
+        ax.set_xticklabels([str(i + 1) for i in range(len(xs))])
+        ax.set_xlabel("nights of data", fontsize=10, color=INK)
+        ax.set_ylabel("share of the ring already surfaced", fontsize=10, color=INK)
+        ax.set_title("How much of each ring was already visible",
+                     color=INK, fontsize=12, loc="left", pad=10)
+
+    fig.tight_layout()
+    dest = out / "time_to_detection.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
 def merchant_vs_platform_chart(mv: dict, out: Path) -> Path | None:
     """What one business sees against what the platform sees.
 
@@ -455,6 +508,70 @@ def write_results(cfg, score: dict | None, ring: dict | None,
           "of what makes PPA hard is the poverty of what it gives you, not the "
           "method.\n")
         a(f"{gen['note']}\n")
+
+    rep = None
+    repp = proc / "replay.json"
+    if repp.exists():
+        rep = json.loads(repp.read_text())
+    if rep and rep.get("snapshots"):
+        a("## Watching the window day by day\n")
+        a("Everything above is forensic: it takes a window that has already "
+          "happened and finds the rings in it. That is a fair way to measure "
+          "the method and it is not how it would be used. So this replays the "
+          "scoring window one night at a time — each night rebuilds the graph "
+          "and features from the days up to that night only, applies the model "
+          "**already fitted on the earlier window** (nothing is refitted, "
+          "because a system running on the 25th cannot use a model trained on "
+          "the 28th), and peels at the standard operating point.\n")
+        a("| nights of data | edges | rings | accounts surfaced | share worth reviewing | real customers per catch | seconds |")
+        a("|---:|---:|---:|---:|---:|---:|---:|")
+        for sn in rep["snapshots"]:
+            a(f"| {sn['days_of_data']} | {sn['edges']:,} | {sn['n_rings']} | "
+              f"{sn['accounts_in_rings']:,} | {sn['ring_precision']} | "
+              f"{sn['normal_flagged_per_fraud_caught']} | "
+              f"{sn['seconds']['total']:.0f} |")
+        a("")
+        first, last = rep["snapshots"][0], rep["snapshots"][-1]
+        a(f"**One night of data is not enough.** With a single night the queue "
+          f"is at {first['ring_precision']} against a base rate of "
+          f"{ring['base_rate_among_labelled'] if ring else 0.2242} — no better "
+          f"than picking accounts at random — and it costs "
+          f"{first['normal_flagged_per_fraud_caught']} real customers for every "
+          f"fraudster caught. By the fourth night it is {last['ring_precision']} "
+          f"at {last['normal_flagged_per_fraud_caught']}, which is a tenfold "
+          "improvement in the cost of being wrong. The method needs a few days "
+          "of accumulated structure before it has anything to say, and that is "
+          "a real operational constraint rather than a tuning problem.\n")
+        sm = rep["summary"]
+        a(f"A nightly snapshot takes about {sm['seconds_per_night']['median_total']:.0f} "
+          f"seconds end to end — build, score and peel — on a laptop, so running "
+          "this every night is not the expensive part of operating it.\n")
+
+        ov = sm["best_ring_overlap_before_the_last_night"]
+        a("### The thing I could not measure\n")
+        a("I wanted to report days-to-detection per ring: the night each of the "
+          "final rings first became visible. That turns out not to be "
+          "answerable, and the reason is worth more than the number would have "
+          "been.\n")
+        a(f"**Ring identity does not survive a night.** Matching each final ring "
+          f"against every ring from an earlier night, the best overlap reached "
+          f"is a median of {ov['median']} and a maximum of {ov['max']}, against "
+          f"the {ov['threshold_required']} I required to call it the same group. "
+          f"Not one of the {sm['rings_on_the_last_night']} final rings had a "
+          "recognisable predecessor. Peeling is a global optimisation, so a "
+          "night of new edges shifts densities everywhere and the top rings are "
+          "recomposed rather than extended — the accounts do not vanish, the "
+          "grouping does.\n")
+        h = sm["days_to_half_the_members_surfaced"]
+        a(f"So the honest version of the question drops group identity and asks "
+          f"how much of each final ring was already being surfaced *somewhere* "
+          f"on an earlier night. By that measure **{h['share_before_the_last_night']:.0%} "
+          f"of the final rings had half their members already inside some "
+          f"surfaced ring before the last night**, and at that point "
+          f"{sm['share_of_ring_spend_still_ahead_when_half_surfaced']:.0%} of "
+          "their promotion spend was still ahead of them. That is the number a "
+          "team could act on, and it is much weaker than the one I set out to "
+          "report.\n")
 
     views = None
     vp = proc / "view_comparison.json"
@@ -801,6 +918,11 @@ def main() -> None:
                 figures.append(d)
     if weights:
         d = relation_lift_chart(weights, figs)
+        if d:
+            figures.append(d)
+    repj = proc / "replay.json"
+    if repj.exists():
+        d = replay_chart(json.loads(repj.read_text()), figs)
         if d:
             figures.append(d)
     mvj = proc / "merchant_view.json"

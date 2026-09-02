@@ -69,6 +69,8 @@ class RingsCfg(BaseModel):
     top_k: int
     g_min: float
     prune_tau: float
+    prune_tau_headline: float
+    lambda_headline: float
 
 
 class CostCfg(BaseModel):

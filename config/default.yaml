@@ -76,6 +76,12 @@ rings:
   top_k: 25
   g_min: 0.0
   prune_tau: 0.3
+  # The operating point the headline results sit at, named rather than left
+  # implicit in a best-cell search, so anything that has to reproduce it -
+  # the nightly replay, the adversarial runs - reads one value instead of
+  # re-deriving it and risking a different answer.
+  prune_tau_headline: 0.5
+  lambda_headline: 5.0
 
 cost:
   # Both are assumptions and are labelled as such in every output.

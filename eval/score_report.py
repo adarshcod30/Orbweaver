@@ -22,7 +22,7 @@ from eval.metrics import evaluate, ltv_proxy
 from eval.split import make_split
 from orbweaver.config import load_config
 from orbweaver.data.windows import EARLY, LATE, week2_windows
-from orbweaver.scoring.xgb_graph import fit_scorer
+from orbweaver.scoring.xgb_graph import fit_scorer, save_scorer
 
 
 def main() -> None:
@@ -35,6 +35,11 @@ def main() -> None:
 
     result = fit_scorer(cfg, split)
     scores = result.scores
+    # Persist the fitted model and its calibrator. Replaying the window has to
+    # apply the model that already existed to whatever each night could see;
+    # refitting per night would answer an easier question and would let the
+    # future inform the past.
+    save_scorer(result, cfg)
 
     # Persist the scores here, not only the metrics. Everything downstream -
     # ring extraction, the hostel test, the adversarial runs - reads this file,
