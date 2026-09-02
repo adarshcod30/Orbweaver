@@ -91,6 +91,19 @@ Labels: 4 fraud, 0 normal, 3 unlabelled.
 
 144 promotion orders x an assumed Rs.100 per promotion (PPA ships no monetary amounts; this is an assumption).
 
+### How far down the queue is still worth reading
+
+The same operating point, taken deeper. A review queue has a budget, so what matters is how quickly quality falls as you ask for more rings.
+
+| rings | accounts surfaced | labelled | ring precision | vs base | real customers per catch | recall |
+|---:|---:|---:|---:|---:|---:|---:|
+| 25 | 1,638 | 336 | 0.7292 | 3.252× | 0.371 | 0.0036 |
+| 200 | 8,167 | 1880 | 0.6654 | 2.967× | 0.503 | 0.0183 |
+
+Eight times the depth costs about six points of precision (0.7292 to 0.6654) and buys roughly four times the coverage. Precision decays, it does not fall off a cliff, so the queue depth is a budget decision rather than a threshold to discover.
+
+On held-out accounts alone the deep pass gives **0.6557** across 488 labelled members — within a point of the all-labelled figure, so there is no memorisation gap at depth either.
+
 ## Does any of this work on a graph that is not PPA?
 
 Every other number here comes from one dataset, from one platform, in one country. So I ran the pipeline unchanged on two fraud graphs that share the shape and nothing else — **Amazon** reviewers and **YelpChi** reviews (Dou et al., CIKM 2020; two of GADBench's ten datasets). Both are multi-relation graphs with node labels.

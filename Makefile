@@ -4,7 +4,7 @@
 PY := python3
 .DEFAULT_GOAL := help
 .PHONY: help setup download schema data graph windows weights features subsample \
-        windows-weighted score rings hostel views adversarial overlay generalise \
+        windows-weighted score sage rings rings-deep hostel views adversarial overlay generalise \
         download-gadbench report reproduce test clean
 
 help:
@@ -53,6 +53,10 @@ score:  ## train the account scorer and report detection numbers
 rings:  ## extract rings across the tau/lambda grid and measure them
 	$(PY) -u -m eval.run_rings
 
+rings-deep:  ## a deeper pass at the chosen operating point, for precision@K
+	ORBWEAVER_TOP_K=200 ORBWEAVER_TAU=0.5 ORBWEAVER_LAMBDA=5.0 \
+	  ORBWEAVER_OUT=ring_report_deep.json $(PY) -u -m eval.run_rings
+
 hostel:  ## check the pipeline against legitimate co-located groups
 	$(PY) -u -m orbweaver.rings.hostel_test
 
@@ -90,7 +94,7 @@ check:  ## tests plus the pre-push check on committed prose
 	./scripts/voice_check.sh
 
 # Every stage from the raw files to the numbers in the documentation.
-reproduce: schema data graph windows-weighted test score sage rings hostel views adversarial overlay generalise report  ## everything, end to end
+reproduce: schema data graph windows-weighted test score sage rings rings-deep hostel views adversarial overlay generalise report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 
