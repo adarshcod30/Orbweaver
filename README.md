@@ -23,6 +23,15 @@ signals — per transaction. Both are good at what they do, and a ring is
 invisible to both, because a ring is not a property of any order. It is a
 property of the graph between them.
 
+I checked this rather than assuming it. As of 2 September 2026, Sprint 2026's
+fraud and risk launches are chargeback protection, AML risk screening, an RTO
+shielder, a dispute auto-responder and biometric card authentication — every
+one of them scoped to a transaction, a chargeback or an identity. The closest
+thing to this work is the AML screening, since money-laundering detection is
+where graph methods usually appear, but it is described as predicting risk
+early rather than as network analysis. Nothing ring-, group- or graph-level
+appears anywhere.
+
 Orbweaver sits downstream of a per-order scorer and looks at the web instead of
 the strand.
 
