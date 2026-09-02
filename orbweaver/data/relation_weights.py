@@ -50,6 +50,12 @@ def fit_relation_weights(cfg: Config | None = None, split=None,
     Uses the EARLY window graph by default: the weights are a training-time
     parameter, so they must be fitted on the same window the model trains on,
     not on the window used to score.
+
+    **This is fitted from a graph that is then rebuilt using it.** That
+    circularity is resolved by building the windows once with neutral weights,
+    fitting here, and rebuilding - see the `windows-weighted` target. The fit
+    only reads the relation bitmask on each edge, which does not depend on the
+    weights, so the bootstrap pass and the final pass agree.
     """
     from eval.split import make_split
 

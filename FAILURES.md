@@ -215,6 +215,41 @@ same bug with 60 % of the signal intact would have shipped.
 
 ---
 
+## 2 September — `make reproduce` worked on my machine and nowhere else
+
+**What broke:** I cloned the repository into a clean directory, pointed it at
+the raw data, and ran `make reproduce`. It failed on the third target:
+
+    FileNotFoundError: data/processed/edges_week2_early.parquet
+
+**What I believed:** that the pipeline reproduced end to end. I had run every
+stage many times, `make reproduce` had never failed, and the results in
+`docs/results.md` were regenerated from it.
+
+**What it actually is: a circular dependency I had been hiding from myself.**
+The per-relation weights are fitted *from* the early-window graph. The
+early-window graph is built *with* those weights applied. On my machine both
+files had existed since the first run, so whichever order the targets ran in,
+something valid was always on disk and the cycle was invisible. On a clean
+checkout the `weights` target runs before anything has built the graph it
+reads, and there is nothing to read.
+
+**How I got out:** made the two passes explicit. `windows-weighted` builds the
+windows once with neutral weights, fits the multipliers from that graph, then
+rebuilds the windows with them applied. The fit only reads the relation bitmask
+on each edge, which does not depend on the weights, so the bootstrap pass and
+the final pass agree on what they measure — the cycle is real but it converges
+in one step, and now it says so in the code.
+
+**What I take from it:** "every number comes from `make reproduce`" was a rule
+I had written down and believed I was following. It was true in the sense that
+the numbers came out of those targets, and false in the sense that nobody else
+could have produced them. A fresh clone is the only thing that distinguishes
+the two, and it took fifteen minutes to find something I would otherwise have
+shipped.
+
+---
+
 ## 2 September — I could not run the authors' checkpoint, and stopped trying
 
 **What I wanted:** to run PromoGuardian's released checkpoint on the same graph

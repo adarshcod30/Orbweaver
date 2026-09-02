@@ -4,7 +4,7 @@
 PY := python3
 .DEFAULT_GOAL := help
 .PHONY: help setup download schema data graph windows weights features subsample \
-        score rings hostel views adversarial overlay report reproduce test clean
+        windows-weighted score rings hostel views adversarial overlay report reproduce test clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -71,7 +71,7 @@ test:  ## schema, temporal-split and planted-ring tests
 
 # The full path from raw files to the numbers in the documentation.
 # `weights` is fitted before `windows` because the graph applies it.
-reproduce: data graph weights windows test score rings hostel views adversarial overlay report  ## everything, end to end
+reproduce: data graph windows-weighted test score rings hostel views adversarial overlay report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 
