@@ -5,7 +5,8 @@ PY := python3
 .DEFAULT_GOAL := help
 .PHONY: help setup download schema data graph windows weights features subsample \
         windows-weighted score sage rings rings-deep hostel views adversarial overlay generalise \
-        download-gadbench merchant-view replay report reproduce reproduce-core test clean
+        download-gadbench merchant-view replay ring-scorer ring-context \
+        report reproduce reproduce-core test clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -82,6 +83,12 @@ merchant-view:  ## what one business sees against what the platform sees
 replay:  ## replay the scoring window one night at a time
 	$(PY) -u -m eval.replay
 
+ring-scorer:  ## learn a confidence per ring and compare it to density
+	$(PY) -u -m eval.ring_confidence
+
+ring-context:  ## feed ring context back into the account score, and time /check
+	$(PY) -u -m eval.ring_context_eval
+
 sage:  ## optional GraphSAGE scorer, reported beside the default one
 	$(PY) -u -m orbweaver.scoring.sage
 
@@ -102,7 +109,7 @@ check:  ## tests plus the pre-push check on committed prose
 # Every stage from the raw files to the numbers in the documentation.
 reproduce-core: schema data graph windows-weighted test score sage rings rings-deep hostel views adversarial overlay generalise report  ## the core pipeline on its own, about 50 min
 
-reproduce: reproduce-core merchant-view replay report  ## everything, end to end
+reproduce: reproduce-core merchant-view replay ring-scorer ring-context report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

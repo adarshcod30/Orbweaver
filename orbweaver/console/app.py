@@ -15,14 +15,30 @@ disagrees with `docs/results.md`.
 from __future__ import annotations
 
 import json
+import time
 
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 
 from orbweaver.config import load_config
+from orbweaver.console.check import CheckIndex, render_card
 from eval.case_report import CSS, esc
 
 app = FastAPI(title="Orbweaver")
+
+# Built once at import, not per request. The whole point of /check is that a
+# per-transaction system could call it inside a request, and that is only true
+# if answering one account is array indexing rather than file reads.
+_INDEX: CheckIndex | None = None
+
+
+def check_index() -> CheckIndex:
+    """The route handler for "/" is also called index(), so this one is named
+    apart from it - the collision silently shadowed this function."""
+    global _INDEX
+    if _INDEX is None:
+        _INDEX = CheckIndex(load_config())
+    return _INDEX
 
 
 def load_report() -> dict:
@@ -142,6 +158,26 @@ def ring_detail(rank: int) -> str:
 <div class="note">First accounts: {esc(members)}</div>
 <div class="note">{esc(case.get('rupees_at_stake_basis', ''))}</div>
 </div>"""
+
+
+@app.get("/check/{account}")
+def check(account: int):
+    """Everything known about one account, as JSON."""
+    t0 = time.perf_counter()
+    out = check_index().check(account)
+    out["took_ms"] = round((time.perf_counter() - t0) * 1000.0, 3)
+    return out
+
+
+@app.get("/check/{account}/card", response_class=HTMLResponse)
+def check_card(account: int) -> str:
+    """The same answer as a card a person can read."""
+    t0 = time.perf_counter()
+    result = check_index().check(account)
+    took = (time.perf_counter() - t0) * 1000.0
+    return (f"<style>{CSS}</style><div class=\"wrap\">"
+            f"{render_card(result)}"
+            f"<p class=\"sub\">answered in {took:.1f} ms</p></div>")
 
 
 def main() -> None:

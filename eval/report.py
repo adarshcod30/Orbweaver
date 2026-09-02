@@ -181,6 +181,59 @@ def adversarial_chart(frag: dict, adv: dict | None, out: Path) -> Path | None:
     return dest
 
 
+def ring_scorer_charts(rs: dict, out: Path) -> list[Path]:
+    """Queue quality by ranking, and whether the confidence means anything."""
+    made = []
+    if not rs.get("trained"):
+        return made
+
+    depths = sorted({int(k) for r in rs["rankings"].values()
+                     for k in r["all_labelled"]})
+    fig, ax = plt.subplots(figsize=(7.2, 4.2), dpi=160)
+    _style(ax)
+    styles = {"density": (MUTED, "o", "density (what the queue does today)"),
+              "mean_member_score": ("#0369a1", "s", "mean member score (baseline)"),
+              "learned_confidence": (ACCENT, "^", "learned confidence")}
+    for name, r in rs["rankings"].items():
+        colour, marker, label = styles.get(name, (INK, "o", name))
+        ys = [r["all_labelled"].get(str(d), {}).get("precision") for d in depths]
+        ax.plot(depths, ys, marker=marker, color=colour, linewidth=1.8,
+                markersize=6, label=label)
+    ax.set_xlabel("rings reviewed", fontsize=10, color=INK)
+    ax.set_ylabel("share worth reviewing", fontsize=10, color=INK)
+    ax.set_xticks(depths)
+    ax.set_title("Does a learned confidence order the queue better?",
+                 color=INK, fontsize=12, loc="left", pad=12)
+    ax.legend(frameon=False, fontsize=9)
+    fig.tight_layout()
+    d1 = out / "queue_by_ranking.png"
+    fig.savefig(d1, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    made.append(d1)
+
+    cal = rs.get("calibration") or []
+    if cal:
+        fig, ax = plt.subplots(figsize=(5.2, 4.6), dpi=160)
+        _style(ax)
+        px = [c["predicted"] for c in cal]
+        py = [c["realised"] for c in cal]
+        ax.plot([0, 1], [0, 1], "--", color=MUTED, linewidth=1.0)
+        ax.annotate("perfectly calibrated", xy=(0.55, 0.58), fontsize=8,
+                    color=MUTED, rotation=38)
+        ax.plot(px, py, marker="o", color=ACCENT, linewidth=1.8, markersize=6)
+        ax.set_xlabel("confidence the model gave", fontsize=10, color=INK)
+        ax.set_ylabel("share that were actually rings", fontsize=10, color=INK)
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+        ax.set_title("Does the confidence mean what it says?",
+                     color=INK, fontsize=12, loc="left", pad=12)
+        fig.tight_layout()
+        d2 = out / "ring_calibration.png"
+        fig.savefig(d2, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+        made.append(d2)
+    return made
+
+
 def replay_chart(rep: dict, out: Path) -> Path | None:
     """How much a night of extra data is worth, and how little ring identity
     survives from one night to the next."""
@@ -508,6 +561,175 @@ def write_results(cfg, score: dict | None, ring: dict | None,
           "of what makes PPA hard is the poverty of what it gives you, not the "
           "method.\n")
         a(f"{gen['note']}\n")
+
+    rc = None
+    rcp = proc / "ring_context.json"
+    if rcp.exists():
+        rc = json.loads(rcp.read_text())
+    if rc and rc.get("results"):
+        a("## Feeding the web back into the strand\n")
+        a("The argument this project makes is that a ring is invisible to a "
+          "system scoring one transaction at a time. The fair follow-up is "
+          "whether the ring view can give anything *back* to the per-account "
+          "view — because if it can, a per-transaction system does not have to "
+          "be replaced to benefit from any of this. It can consume a few extra "
+          "columns.\n")
+        h = rc["horizon"]
+        a(f"Context comes from rings found on days {h['context_days']} and is "
+          f"joined to features from days {h['feature_days']}, so every context "
+          "day strictly precedes every feature day. That is checked against the "
+          "window manifests rather than assumed from the naming, because this "
+          "is the easiest place in the whole pipeline to let the future inform "
+          f"the past. **{rc['accounts_in_previous_rings']:,} accounts** were in "
+          "a previous-window ring.\n")
+        a("| how the score and the context are combined | held-out AUPRC | change |")
+        a("|---|---:|---:|")
+        base = rc["results"].get("score alone", {})
+        a(f"| score alone | {base.get('auprc')} | — |")
+        for name, r in rc["results"].items():
+            if name == "score alone" or "auprc" not in r:
+                continue
+            a(f"| {name} | {r['auprc']} | {r.get('delta_auprc', 0):+} |")
+        a("")
+        deltas = [r.get("delta_auprc", 0) for k, r in rc["results"].items()
+                  if k != "score alone" and "auprc" in r]
+        best = max(deltas) if deltas else 0.0
+        if best <= 0.001:
+            a("**This did not work, and the honest reading is that it barely "
+              "moves.** No combination of ring context with the account score "
+              "improves held-out AUPRC by more than a rounding error. The "
+              "context features are real and they are computed correctly — the "
+              "horizon test passes and the coverage numbers are in the JSON — "
+              "they simply carry almost nothing the account score does not "
+              "already have. That is worth stating plainly rather than "
+              "presenting a fitted variant that squeezes out a third decimal.\n")
+        else:
+            a(f"The best combination adds **{best:+.4f} AUPRC** on held-out "
+              "accounts. The first two arms have nothing fitted in them at all, "
+              "so there is no opportunity to tune on the measurement; the "
+              "fitted blend is reported after them with its weight and its "
+              "horizon caveat.\n")
+        cov = rc.get("coverage", {})
+        if cov:
+            a("How much of the held-out set each context feature actually "
+              "touches, which is the ceiling on how much any of them could "
+              "matter:\n")
+            a("| context feature | held-out accounts with a non-zero value | share |")
+            a("|---|---:|---:|")
+            for k, v in cov.items():
+                a(f"| `{k}` | {v['heldout_nonzero']:,} | {v['heldout_share']:.2%} |")
+            a("")
+        lat = rc.get("check_latency", {})
+        if "p50_ms" in lat:
+            a("### Asking about one account\n")
+            a("A per-transaction system would not run a batch job; it has one "
+              "account in front of it and needs an answer inside a request. "
+              f"`GET /check/{{account}}` returns the score, ring membership and "
+              "its evidence, how many neighbours are in rings, and the rupee "
+              "assumption that travels with every figure. Indexes are built "
+              "once at start-up, so a lookup is array indexing rather than a "
+              "file read.\n")
+            a(f"Measured over {lat['samples']:,} random accounts: **p50 "
+              f"{lat['p50_ms']} ms, p95 {lat['p95_ms']} ms**, worst "
+              f"{lat['max_ms']} ms. `scripts/check_demo.sh` asks about an "
+              "account inside a ring and one outside it.\n")
+
+    rs = None
+    rsp = proc / "ring_scorer.json"
+    if rsp.exists():
+        rs = json.loads(rsp.read_text())
+    if rs and rs.get("trained"):
+        a("## Ranking rings by a learned confidence\n")
+        a("The queue is ordered by density, which is the crudest thing it could "
+          "be. Density says how tightly a group is connected; it does not say "
+          "how likely the group is to be fraudulent, and the whole reason the "
+          "score cut-off exists is that those are different questions. So this "
+          "learns a ring-level model and compares it against density and "
+          "against the obvious baseline anyone would reach for first, the mean "
+          "score of a ring's members.\n")
+        c = rs["candidates"]
+        a(f"Candidates come from the early window: **{c['generated']:,} rings** "
+          f"across a spread of operating points, of which **{c['usable']:,}** "
+          f"have enough labelled members to carry a label and "
+          f"**{c['positives']:,}** are majority-fraud. The account scores used "
+          "to build them are five-fold out-of-fold, so no ring is assembled "
+          "from scores that had already seen its own members' labels.\n")
+        a("| rings reviewed | density | mean member score | learned confidence |")
+        a("|---:|---:|---:|---:|")
+        depths = sorted({int(k) for r in rs["rankings"].values()
+                         for k in r["all_labelled"]})
+        for d in depths:
+            row = [rs["rankings"][k]["all_labelled"].get(str(d), {}).get("precision")
+                   for k in ("density", "mean_member_score", "learned_confidence")]
+            a(f"| {d} | " + " | ".join(str(v) for v in row) + " |")
+        a("")
+        a("On held-out members only:\n")
+        a("| rings reviewed | density | mean member score | learned confidence |")
+        a("|---:|---:|---:|---:|")
+        for d in depths:
+            row = [rs["rankings"][k]["heldout_only"].get(str(d), {}).get("precision")
+                   for k in ("density", "mean_member_score", "learned_confidence")]
+            a(f"| {d} | " + " | ".join(str(v) for v in row) + " |")
+        a("")
+        # State the winner from the data rather than assuming it is the model.
+        depth0 = str(depths[0])
+        best_name, best_val = None, -1.0
+        for k, r in rs["rankings"].items():
+            v = r["all_labelled"].get(depth0, {}).get("precision") or 0.0
+            if v > best_val:
+                best_name, best_val = k, v
+        pretty = {"density": "density", "mean_member_score": "mean member score",
+                  "learned_confidence": "the learned confidence"}
+        if best_name != "learned_confidence":
+            c = rs["candidates"]
+            a(f"**The learned model lost, and the baseline won.** At {depth0} "
+              f"rings, {pretty[best_name]} reaches {best_val} against "
+              f"{rs['rankings']['learned_confidence']['all_labelled'][depth0]['precision']} "
+              f"for the learned confidence and "
+              f"{rs['rankings']['density']['all_labelled'][depth0]['precision']} "
+              "for density. Ordering the queue by the mean score of a ring's "
+              "members beats both the thing it does today and the thing I "
+              "built to replace it.\n")
+            a(f"The reason is visible in the training data. Of "
+              f"{c['usable']:,} candidate rings with enough labelled members, "
+              f"**{c['positives']:,} are majority-fraud — {c['positive_share']:.1%}**. "
+              "Candidates are generated at score cut-offs of 0.3 and 0.5, and "
+              "that cut-off is precisely the thing that makes rings "
+              "fraud-enriched in the first place. By the time a ring is a "
+              "candidate, it is almost certainly fraudulent, so there is "
+              "nearly nothing left for a ring-level model to separate. The "
+              "calibration shows it collapsing: 441 of the rings are predicted "
+              "at 1.0, and the one bucket it does push down it gets wrong in "
+              "the other direction — predicted 0.277 against a realised "
+              "0.658.\n")
+            a("I am leaving the comparison in rather than deleting the "
+              "experiment, because the useful result is the baseline. "
+              "Reordering the queue by mean member score is a free improvement "
+              "over density and I would not have found it if I had only "
+              "compared my model against the status quo.\n")
+        else:
+            a(f"The learned confidence leads at {depth0} rings with "
+              f"{best_val}, against the mean-member-score baseline and "
+              "density.\n")
+
+        if rs.get("hostel_clusters") and rs["hostel_clusters"].get("their_median_confidence") is not None:
+            h = rs["hostel_clusters"]
+            same = (h["their_median_confidence"] == h["median_confidence_of_all_rings"])
+            a(f"The population this must not promote is the legitimate "
+              f"co-located clusters. {h['rings_mostly_inside_a_legitimate_cluster']} "
+              f"of the candidate rings sit mostly inside one, and their median "
+              f"confidence is **{h['their_median_confidence']}** against "
+              f"{h['median_confidence_of_all_rings']} across all rings"
+              + (" — identical, which is not reassurance but another symptom "
+                 "of a model that gives almost everything the same answer.\n"
+                 if same else ".\n"))
+        if rs.get("top_drivers"):
+            a("Every ring carries the three features that moved its confidence "
+              "most, so a reviewer opening a case sees why it is near the top "
+              "rather than only that it is. For the highest-confidence ring "
+              "those are: " +
+              ", ".join(f"`{d['feature']}`" for d in rs["top_drivers"][0]["drivers"])
+              + ".\n")
 
     rep = None
     repp = proc / "replay.json"
@@ -920,6 +1142,9 @@ def main() -> None:
         d = relation_lift_chart(weights, figs)
         if d:
             figures.append(d)
+    rsj = proc / "ring_scorer.json"
+    if rsj.exists():
+        figures.extend(ring_scorer_charts(json.loads(rsj.read_text()), figs))
     repj = proc / "replay.json"
     if repj.exists():
         d = replay_chart(json.loads(repj.read_text()), figs)

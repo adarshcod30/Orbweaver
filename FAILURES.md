@@ -307,6 +307,56 @@ in the numbers can never again be two different objects.
 
 ---
 
+## 3 September — the model I built lost to the baseline I almost did not run
+
+**What broke:** I built a ring-level model to rank the review queue by learned
+confidence instead of by density. It is worse than density at the top of the
+queue, and both are worse than the crudest baseline I could think of.
+
+    rings reviewed        25       100       200
+    density           0.6859    0.5976    0.5814
+    mean member score 0.7667    0.6951    0.6739
+    learned model     0.5480    0.5866    0.5989
+
+**What I believed:** that density is a poor way to order a queue — which it is
+— and that a model over ring-level features would therefore beat it. The
+reasoning was sound and the conclusion did not follow.
+
+**What it actually is.** Of the 479 candidate rings with enough labelled
+members to train on, **434 are majority-fraud. Ninety-one per cent.** The
+candidates are generated at score cut-offs of 0.3 and 0.5, and that cut-off is
+precisely the mechanism that makes rings fraud-enriched. By the time a group is
+a candidate the question "is this a ring?" has already been answered, so there
+is almost nothing left for a ring-level model to separate.
+
+It shows in the calibration. The model puts 441 of the rings at a predicted
+confidence of 1.0, and the single bucket it does push down it gets wrong in the
+other direction — predicted 0.277 against a realised 0.658. Its median
+confidence on legitimate co-located clusters is 1.0, exactly the same as its
+median on everything else, which my test would have passed as "not ranked
+higher than average" if I had not tightened it to require the confidences to
+vary at all.
+
+**What I got out of it anyway.** The spec made me report the mean-member-score
+baseline alongside my model, and that baseline **wins at every depth** — 0.7667
+against density's 0.6859 at 25 rings. Reordering the queue by the mean score of
+a ring's members is a free improvement over what the queue does today, it needs
+no new model, and I would not have found it if I had only compared my model
+against the status quo. That is the result from this piece of work, and it is
+not the one I was trying to produce.
+
+I am leaving the whole comparison in the results rather than quietly dropping a
+failed experiment. A ring-level model is a reasonable thing to try and the
+reason it fails here is specific and interesting: the score cut-off is doing so
+much work that it leaves the downstream model with no job.
+
+**What I take from it:** I nearly ran this with two arms — density and my model
+— because those are the two I cared about. The third arm cost one line and is
+the only one that produced anything useful. A baseline you are confident you
+will beat is exactly the one worth running.
+
+---
+
 ## 3 September — rings do not survive the night
 
 **What broke:** I set out to report days-to-detection — for each ring the last

@@ -130,6 +130,36 @@ On Amazon the unpruned extractor lands at 0.573× the base rate and on YelpChi a
 
 Account-disjoint and stratified, but NOT forward in time: these files carry no timestamps. Rarity is approximated from endpoint degree because the entity ids are not recoverable from an adjacency.
 
+## Ranking rings by a learned confidence
+
+The queue is ordered by density, which is the crudest thing it could be. Density says how tightly a group is connected; it does not say how likely the group is to be fraudulent, and the whole reason the score cut-off exists is that those are different questions. So this learns a ring-level model and compares it against density and against the obvious baseline anyone would reach for first, the mean score of a ring's members.
+
+Candidates come from the early window: **693 rings** across a spread of operating points, of which **479** have enough labelled members to carry a label and **434** are majority-fraud. The account scores used to build them are five-fold out-of-fold, so no ring is assembled from scores that had already seen its own members' labels.
+
+| rings reviewed | density | mean member score | learned confidence |
+|---:|---:|---:|---:|
+| 25 | 0.6859 | 0.7667 | 0.548 |
+| 100 | 0.5976 | 0.6951 | 0.5866 |
+| 200 | 0.5814 | 0.6739 | 0.5989 |
+
+On held-out members only:
+
+| rings reviewed | density | mean member score | learned confidence |
+|---:|---:|---:|---:|
+| 25 | 0.7042 | 0.8333 | 0.4328 |
+| 100 | 0.5735 | 0.703 | 0.5406 |
+| 200 | 0.5684 | 0.6719 | 0.5678 |
+
+**The learned model lost, and the baseline won.** At 25 rings, mean member score reaches 0.7667 against 0.548 for the learned confidence and 0.6859 for density. Ordering the queue by the mean score of a ring's members beats both the thing it does today and the thing I built to replace it.
+
+The reason is visible in the training data. Of 479 candidate rings with enough labelled members, **434 are majority-fraud — 90.6%**. Candidates are generated at score cut-offs of 0.3 and 0.5, and that cut-off is precisely the thing that makes rings fraud-enriched in the first place. By the time a ring is a candidate, it is almost certainly fraudulent, so there is nearly nothing left for a ring-level model to separate. The calibration shows it collapsing: 441 of the rings are predicted at 1.0, and the one bucket it does push down it gets wrong in the other direction — predicted 0.277 against a realised 0.658.
+
+I am leaving the comparison in rather than deleting the experiment, because the useful result is the baseline. Reordering the queue by mean member score is a free improvement over density and I would not have found it if I had only compared my model against the status quo.
+
+The population this must not promote is the legitimate co-located clusters. 7 of the candidate rings sit mostly inside one, and their median confidence is **1.0** against 1.0 across all rings — identical, which is not reassurance but another symptom of a model that gives almost everything the same answer.
+
+Every ring carries the three features that moved its confidence most, so a reviewer opening a case sees why it is near the top rather than only that it is. For the highest-confidence ring those are: `internal_weight_per_member`, `score_mass_per_member`, `busiest_day_share`.
+
 ## Watching the window day by day
 
 Everything above is forensic: it takes a window that has already happened and finds the rings in it. That is a fair way to measure the method and it is not how it would be used. So this replays the scoring window one night at a time — each night rebuilds the graph and features from the days up to that night only, applies the model **already fitted on the earlier window** (nothing is refitted, because a system running on the 25th cannot use a model trained on the 28th), and peels at the standard operating point.
@@ -290,6 +320,10 @@ The separator is the **account score**, not the structure — the touched cluste
 ![ring_precision_grid](figures/ring_precision_grid.png)
 
 ![relation_lift](figures/relation_lift.png)
+
+![queue_by_ranking](figures/queue_by_ranking.png)
+
+![ring_calibration](figures/ring_calibration.png)
 
 ![time_to_detection](figures/time_to_detection.png)
 
