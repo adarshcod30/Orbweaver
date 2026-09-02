@@ -215,6 +215,41 @@ same bug with 60 % of the signal intact would have shipped.
 
 ---
 
+## 2 September — I could not run the authors' checkpoint, and stopped trying
+
+**What I wanted:** to run PromoGuardian's released checkpoint on the same graph
+I built, so their scores and mine would be a column each in the same table.
+Their repository ships everything needed — `test.py`, `env.yml`,
+`emb_transr_R_8.npy`, and a 128 KB `model_checkpoint_weighted_TransR.pth`.
+
+**What broke:** their code is built on DGL, and there is no DGL wheel for this
+machine. `pip install dgl` returns *"no matching distribution"*, and so does
+their own wheel index at `data.dgl.ai`. Python 3.13 on arm64 macOS is simply
+not a platform DGL publishes for.
+
+**What I believed going in:** I had read their `test.py` before starting and
+noted the hard DGL dependency as a risk, so this was a predicted failure rather
+than a surprise. That is the only reason it cost twenty minutes instead of an
+afternoon.
+
+**What I did instead of pushing on:** I stopped. The options left were building
+DGL from source, downgrading the whole project to Python 3.11, or standing up a
+container — each of which is hours, and none of which improves the thing I am
+actually contributing. Their published numbers (precision 0.9107, recall
+0.6992, F1 0.7911) are in `docs/results.md` as a reference row, with the
+comparability caveat that matters more than the gap: they evaluate on the full
+graph with all eight relations, count unlabelled accounts as negatives, and
+apply no account holdout. My numbers use five relations, a four-day window,
+and accounts the model has never seen. Those are not the same measurement and I
+do not present them as one.
+
+**What I take from it:** reading the dependency before planning the work turned
+an unbounded problem into a twenty-minute one. The temptation was to treat
+"get their checkpoint running" as a milestone because it would make a nicer
+table; it would not have changed a single design decision in this project.
+
+---
+
 ## 2 September — the densest groups were the innocent ones
 
 **What broke:** the whole premise, briefly. With the extractor fixed and

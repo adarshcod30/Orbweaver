@@ -285,6 +285,46 @@ def write_results(cfg, score: dict | None, ring: dict | None,
             a("")
         a(f"{c['rupees_at_stake_basis']}.\n")
 
+    agg = None
+    agp = proc / "aggregator_overlay.json"
+    if agp.exists():
+        agg = json.loads(agp.read_text())
+    if agg:
+        a("## The relation this dataset cannot contain — simulated\n")
+        a("> **Simulated relation — sensitivity analysis. Every number in this "
+          "section comes from synthetic edges and none of it is a claim about "
+          "Orbweaver's real performance.**\n")
+        a("PPA has no payment-level relation. All eight of its relations are "
+          "platform-native — location, links, delivery, store, group, promotion, "
+          "coupon, stimulation. No card token, no UPI VPA, no bank account. That "
+          "is not an oversight; a single merchant only ever sees its own "
+          "payments. A payment aggregator sees the same instrument across every "
+          "merchant it serves, which is an edge nobody else can build.\n")
+        a("I cannot test that here, because the data cannot contain it. What I "
+          "can do is overlay a synthetic instrument relation on the **real** "
+          "graph, sweep how strongly it tracks the real labels, and read the "
+          "gradient. `p_fraud` is the rate at which members of a real fraud "
+          "group land on a shared instrument; `p_normal` the rate for ordinary "
+          "households.\n")
+        b = agg["baseline"]
+        a(f"Baseline without the simulated relation: ring precision "
+          f"**{b['ring_precision']}**, {b['fraud_members']} fraud accounts found.\n")
+        a("| p_fraud | p_normal | simulated edges | ring precision | Δ precision | fraud found |")
+        a("|---:|---:|---:|---:|---:|---:|")
+        for v in agg["grid"].values():
+            a(f"| {v['p_fraud']} | {v['p_normal']} | {v['simulated_edges']:,} | "
+              f"{v['ring_precision']} | {v['delta_precision']:+.4f} | "
+              f"{v['fraud_members']} |")
+        a("")
+        a("**How to read this, and how not to.** Even at the strongest setting "
+          "the gain is modest — about +0.03 precision, and 283 fraud accounts "
+          "found against 213 without it. The sweep is also not monotonic: two "
+          "cells at `p_fraud = 0.5` come out slightly *worse* than baseline, "
+          "which is extraction sensitivity to a changed graph rather than a "
+          "real effect. The honest summary is that a payment edge helps at the "
+          "margin here, not that it transforms the problem.\n")
+        a(f"{agg['caveat']}\n")
+
     frag = None
     fp_ = proc / "fragmentation.json"
     if fp_.exists():

@@ -4,7 +4,7 @@
 PY := python3
 .DEFAULT_GOAL := help
 .PHONY: help setup download schema data graph windows weights features subsample \
-        score rings hostel adversarial report reproduce test clean
+        score rings hostel adversarial overlay report reproduce test clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -50,6 +50,9 @@ adversarial:  ## fragmentation curve and multi-round duplication
 	$(PY) -u -m orbweaver.adversarial.fragment
 	$(PY) -u -m orbweaver.adversarial.duplicate
 
+overlay:  ## simulated payment-instrument relation, sensitivity analysis
+	$(PY) -u -m orbweaver.aggregator.instrument_overlay
+
 report:  ## regenerate docs/results.md, the figures and the case-file page
 	$(PY) -u -m eval.report
 	$(PY) -u -m eval.case_report
@@ -59,7 +62,7 @@ test:  ## schema, temporal-split and planted-ring tests
 
 # The full path from raw files to the numbers in the documentation.
 # `weights` is fitted before `windows` because the graph applies it.
-reproduce: data graph weights windows test score rings hostel adversarial report  ## everything, end to end
+reproduce: data graph weights windows test score rings hostel adversarial overlay report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

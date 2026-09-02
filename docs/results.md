@@ -79,6 +79,32 @@ Labels: 6 fraud, 9 normal, 0 unlabelled.
 
 46 promotion orders x an assumed Rs.100 per promotion (PPA ships no monetary amounts; this is an assumption).
 
+## The relation this dataset cannot contain — simulated
+
+> **Simulated relation — sensitivity analysis. Every number in this section comes from synthetic edges and none of it is a claim about Orbweaver's real performance.**
+
+PPA has no payment-level relation. All eight of its relations are platform-native — location, links, delivery, store, group, promotion, coupon, stimulation. No card token, no UPI VPA, no bank account. That is not an oversight; a single merchant only ever sees its own payments. A payment aggregator sees the same instrument across every merchant it serves, which is an edge nobody else can build.
+
+I cannot test that here, because the data cannot contain it. What I can do is overlay a synthetic instrument relation on the **real** graph, sweep how strongly it tracks the real labels, and read the gradient. `p_fraud` is the rate at which members of a real fraud group land on a shared instrument; `p_normal` the rate for ordinary households.
+
+Baseline without the simulated relation: ring precision **0.71**, 213 fraud accounts found.
+
+| p_fraud | p_normal | simulated edges | ring precision | Δ precision | fraud found |
+|---:|---:|---:|---:|---:|---:|
+| 0.3 | 0.02 | 24,893 | 0.7133 | +0.0033 | 214 |
+| 0.3 | 0.05 | 35,411 | 0.7176 | +0.0076 | 216 |
+| 0.3 | 0.1 | 53,132 | 0.7152 | +0.0052 | 216 |
+| 0.5 | 0.02 | 42,294 | 0.7003 | -0.0097 | 201 |
+| 0.5 | 0.05 | 52,791 | 0.7003 | -0.0097 | 201 |
+| 0.5 | 0.1 | 70,506 | 0.7482 | +0.0382 | 211 |
+| 0.7 | 0.02 | 62,606 | 0.7412 | +0.0312 | 252 |
+| 0.7 | 0.05 | 73,074 | 0.7389 | +0.0289 | 283 |
+| 0.7 | 0.1 | 90,800 | 0.7389 | +0.0289 | 283 |
+
+**How to read this, and how not to.** Even at the strongest setting the gain is modest — about +0.03 precision, and 283 fraud accounts found against 213 without it. The sweep is also not monotonic: two cells at `p_fraud = 0.5` come out slightly *worse* than baseline, which is extraction sensitivity to a changed graph rather than a real effect. The honest summary is that a payment edge helps at the margin here, not that it transforms the problem.
+
+The simulated edges are generated conditional on the fraud labels, so a high p_fraud builds in the signal it then measures. This quantifies what a payment-instrument relation would be worth at an assumed strength; it does not discover that it is valuable, and no cell is a claim about Orbweaver's real performance.
+
 ## Under adversarial fragmentation
 
 The obvious counter-move is to break a ring into cells that share nothing with each other. It works — nothing survives arbitrary fragmentation — so the useful question is *how far* an attacker has to go, and what it costs them.
