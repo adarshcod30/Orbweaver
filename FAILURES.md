@@ -217,6 +217,8 @@ same bug with 60 % of the signal intact would have shipped.
 
 ## 2 September — `make reproduce` worked on my machine and nowhere else
 
+*(Three separate failures, found by the same check.)*
+
 **What broke:** I cloned the repository into a clean directory, pointed it at
 the raw data, and ran `make reproduce`. It failed on the third target:
 
@@ -241,12 +243,35 @@ on each edge, which does not depend on the weights, so the bootstrap pass and
 the final pass agree on what they measure — the cycle is real but it converges
 in one step, and now it says so in the code.
 
+**Then it failed twice more,** and the other two were worse:
+
+*A prerequisite with no rule.* I added `windows-weighted` to the `reproduce`
+prerequisites and to `.PHONY`, but the patch that was supposed to write the
+rule itself silently did nothing — a string replace whose anchor did not match
+and which I had not asserted on. Make treats a phony target with no recipe as
+satisfied, so it skipped the entire stage **without an error** and the run
+failed two targets later on a missing file. A missing rule should be loud. This
+one was silent because I had told make the target was phony, which is exactly
+the promise that stops it complaining.
+
+*Scores that were never written.* `make score` printed detection metrics and
+never saved the scores. Ring extraction, the hostel test and both adversarial
+runs all read `scores_week2.parquet`, and on a clean checkout there was nothing
+to open. It worked here only because I had written that file by hand, once,
+from a throwaway call, hours earlier.
+
 **What I take from it:** "every number comes from `make reproduce`" was a rule
 I had written down and believed I was following. It was true in the sense that
 the numbers came out of those targets, and false in the sense that nobody else
-could have produced them. A fresh clone is the only thing that distinguishes
-the two, and it took fifteen minutes to find something I would otherwise have
-shipped.
+could have produced them. All three failures share one cause — my machine had
+accumulated artefacts that no clean checkout has, so the pipeline was quietly
+depending on files nothing in it produced.
+
+The uncomfortable part is the ordering. I wrote the results, the README and
+most of the documentation *before* running this check, all of it describing a
+pipeline that could not actually run anywhere else. A fresh clone is the only
+thing that separates "it works" from "it works here", and it found three real
+defects in about an hour.
 
 ---
 
