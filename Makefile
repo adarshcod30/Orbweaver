@@ -1,46 +1,62 @@
-# Every number in README.md is produced by `make reproduce`.
+# Every number in README.md and docs/results.md is produced by `make reproduce`.
 # None of them are typed in by hand.
 
 PY := python3
 .DEFAULT_GOAL := help
-.PHONY: help setup download data graph subsample score rings eval adv console report reproduce test clean
+.PHONY: help setup download schema data graph windows weights features subsample \
+        score rings hostel report reproduce test clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-11s\033[0m %s\n", $$1, $$2}'
 
 setup:  ## install python dependencies
 	$(PY) -m pip install -r requirements.txt
 
-download:  ## fetch the PPA release from OSF (~4.0 GB, resumable, md5-verified)
+download:  ## fetch PPA from OSF (~4.0 GB, resumable, md5-verified)
 	./scripts/download_ppa.sh
 
-schema:  ## regenerate data/ppa_schema_facts.json from the raw files
+schema:  ## measure the raw files into data/ppa_schema_facts.json
 	$(PY) scripts/inspect_ppa.py
 
-data:  ## raw CSV -> canonical parquet (the week cut is applied here)
+data:  ## raw CSV -> canonical parquet, week cut applied on order_time
 	$(PY) -m orbweaver.data.load_ppa
 
-graph:  ## build the multi-relation user graph for both weeks
+graph:  ## multi-relation account graph for both weeks
 	$(PY) -m orbweaver.data.build_graph
 
 features:  ## per-account transaction and graph features
 	$(PY) -m orbweaver.features.node_features
 
-windows:  ## split week 2 into early/late windows and build both
+weights:  ## fit per-relation edge weights on training accounts only
+	$(PY) -m orbweaver.data.relation_weights
+
+windows:  ## split week 2 into early/late and build a graph and features for each
 	$(PY) -m orbweaver.data.windows
 
 subsample:  ## entity-anchored development subsample
 	$(PY) -m orbweaver.data.subsample
 
-score:  ## train the scorer and report detection numbers
-	$(PY) -m eval.score_report
+score:  ## train the account scorer and report detection numbers
+	$(PY) -u -m eval.score_report
 
-test:  ## schema + temporal-split-leak tests. must pass before any metric
+rings:  ## extract rings across the tau/lambda grid and measure them
+	$(PY) -u -m eval.run_rings
+
+hostel:  ## check the pipeline against legitimate co-located groups
+	$(PY) -u -m orbweaver.rings.hostel_test
+
+report:  ## regenerate docs/results.md and every figure
+	$(PY) -u -m eval.report
+
+test:  ## schema, temporal-split and planted-ring tests
 	$(PY) -m pytest tests/ -q
 
-clean:  ## remove processed data (raw is kept; re-downloading is slow)
-	rm -rf data/processed
+# The full path from raw files to the numbers in the documentation.
+# `weights` is fitted before `windows` because the graph applies it.
+reproduce: data graph weights windows test score rings hostel report  ## everything, end to end
+	@echo
+	@echo "reproduce complete. See docs/results.md"
 
-reproduce: data test  ## regenerate every number in the README
-	@echo "reproduce: stages beyond 'data' land as they are built"
+clean:  ## remove processed data; raw is kept because re-downloading is slow
+	rm -rf data/processed

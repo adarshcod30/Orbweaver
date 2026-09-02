@@ -141,13 +141,22 @@ def build_graph(week: int, cfg: Config | None = None, *, n_max: int | None = Non
         orders = orders.filter(pa.array((d >= days[0]) & (d <= days[1])))
     users = orders["user_id"].to_numpy()
 
+    # Per-relation multipliers, when they have been fitted. Entity rarity says
+    # how many people share a thing; it cannot say that sharing a location is
+    # more incriminating than sharing a promotion. See data/relation_weights.
+    from orbweaver.data.relation_weights import load_relation_weights
+    alphas = load_relation_weights(cfg) or {}
+
     all_src, all_dst, all_w, all_esz, all_rel = [], [], [], [], []
     per_relation = {}
     for ridx, rel in enumerate(cfg.data.buildable_relations, start=1):
         ent = orders[rel].to_numpy(zero_copy_only=False).astype(np.float64)
         s, d, w, esz = relation_edges(users, ent, n_max=n_max,
                                       rarity_base=cfg.graph.rarity_base)
-        per_relation[rel] = {"pairs": int(s.size),
+        alpha = float(alphas.get(rel, 1.0))
+        if alpha != 1.0:
+            w = (w * alpha).astype(np.float32)
+        per_relation[rel] = {"pairs": int(s.size), "alpha": alpha,
                              "mean_weight": float(w.mean()) if s.size else 0.0}
         all_src.append(s); all_dst.append(d); all_w.append(w); all_esz.append(esz)
         all_rel.append(np.full(s.size, ridx, dtype=np.int8))

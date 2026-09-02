@@ -29,8 +29,15 @@ import pyarrow.parquet as pq
 from orbweaver.config import Config, load_config
 
 # An entity has to be shared by at least this share of a ring before it is
-# worth showing as evidence.
-MIN_COVERAGE = 0.5
+# worth showing. Set low deliberately: in a 200-account ring, an address held
+# by a fifth of the members is a much stronger lead than a coupon held by all
+# of them.
+MIN_COVERAGE = 0.15
+# An entity held by more than this share of the whole platform explains
+# nothing about why these particular accounts are together. One coupon type in
+# this dataset is shared by 97.5% of all accounts; listing it as "evidence"
+# because every ring member has it would be worse than saying nothing.
+MAX_GLOBAL_SHARE = 0.05
 # Relation names as an analyst would read them.
 RELATION_LABELS = {
     "r1": "order location",
@@ -80,7 +87,8 @@ def ring_evidence(members: np.ndarray, orders: dict[str, np.ndarray],
                   cfg: Config, size_lookup: dict) -> dict:
     """Shared entities, timing and money for one ring."""
     n = members.size
-    member_set = np.zeros(int(orders["user_id"].max()) + 1, dtype=bool)
+    n_platform = int(orders["user_id"].max()) + 1
+    member_set = np.zeros(n_platform, dtype=bool)
     member_set[members] = True
     rows = orders["user_id"]
     mine = member_set[rows]
@@ -110,6 +118,8 @@ def ring_evidence(members: np.ndarray, orders: dict[str, np.ndarray],
         entities, sizes_g = size_lookup[rel]
         glob = _lookup_sizes(entities, sizes_g, ents[sel])
         for entity, c, g in zip(ents[sel], counts[sel], glob):
+            if g > MAX_GLOBAL_SHARE * n_platform:
+                continue          # too common to explain anything
             ev["shared_entities"].append({
                 "relation": rel,
                 "relation_label": RELATION_LABELS.get(rel, rel),

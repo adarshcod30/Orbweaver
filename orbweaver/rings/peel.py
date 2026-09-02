@@ -248,6 +248,25 @@ def peel_batch(edges: EdgeList, scores: np.ndarray, *, lambda_: float, k_min: in
         threshold = (1.0 + epsilon) * (contrib[alive].sum() / n_alive)
         drop = alive & (contrib <= threshold)
         n_drop = int(drop.sum())
+
+        # Near the size band we care about, batch removal is too coarse: a
+        # single pass can jump from ~600 vertices past the whole [k_min, k_max]
+        # range to ~20, so no set inside the band is ever evaluated and the
+        # returned "ring" is wherever the jump happened to land. Once the
+        # survivors are within a few multiples of k_max, shrink at most 1% per
+        # pass so every candidate size is actually seen. The remaining edge
+        # set is small by then, so the extra passes are cheap.
+        # 3% steps give ~170 passes across the band instead of ~600 at 1%,
+        # which is enough resolution to find the best size without paying for
+        # a pass per candidate size.
+        fine_from = 2 * (k_max if k_max is not None else k_min * 20)
+        if n_alive <= fine_from and n_drop > max(1, n_alive // 33):
+            budget = max(1, n_alive // 33)
+            cand_idx = np.flatnonzero(drop)
+            keep_idx = cand_idx[np.argsort(contrib[cand_idx])[:budget]]
+            drop = np.zeros(n, dtype=bool)
+            drop[keep_idx] = True
+            n_drop = int(drop.sum())
         if n_drop == 0:
             # No vertex is below the mean only when every contribution is
             # equal; remove the single minimum so the loop still terminates.
@@ -288,8 +307,12 @@ def extract_rings_batch(edges: EdgeList, scores: np.ndarray, *, lambda_: float,
                         k_min: int, top_k: int, g_min: float = 0.0,
                         k_max: int | None = None,
                         candidates: np.ndarray | None = None,
-                        epsilon: float = 0.1) -> list[Ring]:
+                        epsilon: float = 0.1,
+                        progress: bool = False) -> list[Ring]:
     """Top-K rings using batch peeling. Extract, remove, repeat."""
+    import sys
+    import time as _time
+    t_start = _time.time()
     available = np.zeros(edges.n_nodes, dtype=bool)
     if candidates is None:
         available[:] = True
@@ -309,6 +332,10 @@ def extract_rings_batch(edges: EdgeList, scores: np.ndarray, *, lambda_: float,
         ring.rank = rank + 1
         rings.append(ring)
         available[ring.members] = False
+        if progress and (rank < 3 or (rank + 1) % 10 == 0):
+            print(f"    ring {rank + 1:>4}/{top_k}  size={ring.size:>5} "
+                  f"density={ring.density:8.3f}  edges_left={work.src.size:>10,}  "
+                  f"{_time.time() - t_start:6.0f}s", file=sys.stderr, flush=True)
 
         # Drop the extracted ring's edges from the working list. Without this
         # every subsequent extraction rescans the full edge array and top-K

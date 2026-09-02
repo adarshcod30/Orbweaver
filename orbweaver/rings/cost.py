@@ -85,19 +85,34 @@ def evaluate_rings(rings: list[Ring], labels: np.ndarray,
     n_fraud_caught = int((lab == FRAUD).sum())
     n_normal_caught = int((lab == NORMAL).sum())
     known = n_fraud_caught + n_normal_caught
-
     total_fraud = int((labels == FRAUD).sum())
+
+    # Held-out-only figures are the strict ones, but rings surface only a few
+    # hundred accounts, of which a quarter of the labelled ones are held out -
+    # often too few to estimate a rate from. Both are reported: the all-labelled
+    # figure for a usable sample size, the held-out figure for strictness.
+    heldout_block = None
     if allowed is not None:
-        total_fraud = int((labels[restrict_to] == FRAUD).sum())
         in_scope = members[allowed[members]]
         lab_s = labels[in_scope]
-        n_fraud_caught = int((lab_s == FRAUD).sum())
-        n_normal_caught = int((lab_s == NORMAL).sum())
-        known = n_fraud_caught + n_normal_caught
+        hf = int((lab_s == FRAUD).sum())
+        hn = int((lab_s == NORMAL).sum())
+        hk = hf + hn
+        ho_total = int((labels[restrict_to] == FRAUD).sum())
+        heldout_block = {
+            "labelled_members": hk,
+            "fraud_members": hf,
+            "normal_members": hn,
+            "ring_precision": round(hf / hk, 4) if hk else None,
+            "ring_recall": round(hf / ho_total, 6) if ho_total else None,
+            "total_fraud_in_scope": ho_total,
+            "small_sample": hk < 30,
+        }
 
     fp_cost_total = float(ltv[members[labels[members] == NORMAL]].sum())
 
     return {
+        "heldout_only": heldout_block,
         "n_rings": len(rings),
         "accounts_in_rings": int(members.size),
         "ring_sizes": {
