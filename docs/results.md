@@ -79,6 +79,25 @@ Labels: 6 fraud, 9 normal, 0 unlabelled.
 
 46 promotion orders x an assumed Rs.100 per promotion (PPA ships no monetary amounts; this is an assumption).
 
+## What the relations I cannot rebuild are worth
+
+Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:
+
+| graph | relations | edges | rings | ring precision | recall | fraud found | real customers per catch |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| mine | 5 | 35,701,750 | 25 | 0.71 | 0.0031 | 213 | 0.408 |
+| the authors' | 8 | 10,012,449 | 25 | 0.807 | 0.0074 | 506 | 0.239 |
+
+Eight relations against five: **+0.097 ring precision, +293 fraud accounts found** — two and a half times as many — and 41% fewer real customers disturbed per catch.
+
+This is the clearest result in the project and it is not flattering to my graph. It is a direct measurement of a limitation the PromoGuardian authors state themselves — *"in cases where key relations are missing, detection performance may degrade"* — and it supports their central claim that building a comprehensive relation graph matters more than the choice of detection model. My extractor performs better on their graph than on mine.
+
+It is also a generalisation check. View B was constructed by someone else with different rules and a different weight distribution, and the extractor works better on it, so ring extraction is not quietly overfitted to graphs I built myself.
+
+And it sharpens the aggregator argument below: if three more platform-native relations more than double the fraud found, a payment relation that no single platform can build is worth taking seriously.
+
+The two views differ in both relation coverage and edge weighting, and View B covers the whole of week 2 while View A covers its later half. Those effects are not separable from this comparison; it bounds the combined difference rather than isolating the three missing relations.
+
 ## The relation this dataset cannot contain — simulated
 
 > **Simulated relation — sensitivity analysis. Every number in this section comes from synthetic edges and none of it is a claim about Orbweaver's real performance.**
