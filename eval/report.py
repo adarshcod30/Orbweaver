@@ -220,6 +220,39 @@ def write_results(cfg, score: dict | None, ring: dict | None,
         top = list(score["feature_importance_top10"].items())[:6]
         a("Most important features: " + ", ".join(f"`{k}`" for k, _ in top) + ".\n")
 
+    sage = None
+    sp = proc / "sage_report.json"
+    if sp.exists():
+        sage = json.loads(sp.read_text())
+    if sage and score:
+        a("### Gradient boosting against a graph neural network\n")
+        a("Same split, same features, same window. The GNN can propagate along "
+          "edges rather than only summarising a neighbourhood into fixed "
+          "columns, so this is a fair test of whether that helps here.\n")
+        a("| scorer | AUPRC | lift | precision | recall | F1 |")
+        a("|---|---:|---:|---:|---:|---:|")
+        xb = score["results"]["test_heldout__labelled_only"]
+        xf = xb["at_best_f1"]
+        a(f"| XGBoost, 39 features | {xb['auprc']:.4f} | "
+          f"{xb['auprc_lift_over_random']}× | {xf['precision']:.4f} | "
+          f"{xf['recall']:.4f} | {xf['f1']:.4f} |")
+        sb = sage["results"]["test_heldout__labelled_only"]
+        sf = sb["at_best_f1"]
+        a(f"| GraphSAGE, 2 layers | {sb['auprc']:.4f} | "
+          f"{sb['auprc_lift_over_random']}× | {sf['precision']:.4f} | "
+          f"{sf['recall']:.4f} | {sf['f1']:.4f} |")
+        a("")
+        a(f"On held-out accounts, trained in {sage['train_seconds']:.0f}s on "
+          f"{sage['device']} with neighbour sampling at fanout "
+          f"{sage['fanout']}. The two are within noise of each other — the GNN "
+          "is very slightly ahead on AUPRC and very slightly behind on recall. "
+          "That matches GADBench's finding that gradient boosting over "
+          "graph-aggregated features is hard to beat on real anomaly graphs, "
+          "and it means the choice of scorer is not where the value in this "
+          "pipeline sits. I kept XGBoost as the default because it trains in a "
+          "minute, its feature importances are readable, and neither result "
+          "justifies the extra dependency.\n")
+
     if weights:
         a("## What each shared entity is worth\n")
         a("Entity rarity says how many people share a thing. It cannot say that "

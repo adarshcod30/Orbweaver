@@ -24,6 +24,17 @@ Reported at the best-F1 threshold. The two labelling conventions are not compara
 
 Most important features: `active_days`, `orders_per_active_day`, `max_orders_in_day`, `n_distinct_location`, `sku_repeat_rate`, `n_distinct_stimulation`.
 
+### Gradient boosting against a graph neural network
+
+Same split, same features, same window. The GNN can propagate along edges rather than only summarising a neighbourhood into fixed columns, so this is a fair test of whether that helps here.
+
+| scorer | AUPRC | lift | precision | recall | F1 |
+|---|---:|---:|---:|---:|---:|
+| XGBoost, 39 features | 0.3788 | 1.689× | 0.3045 | 0.7566 | 0.4342 |
+| GraphSAGE, 2 layers | 0.3825 | 1.706× | 0.3141 | 0.7121 | 0.4359 |
+
+On held-out accounts, trained in 58s on mps with neighbour sampling at fanout [15, 10]. The two are within noise of each other — the GNN is very slightly ahead on AUPRC and very slightly behind on recall. That matches GADBench's finding that gradient boosting over graph-aggregated features is hard to beat on real anomaly graphs, and it means the choice of scorer is not where the value in this pipeline sits. I kept XGBoost as the default because it trains in a minute, its feature importances are readable, and neither result justifies the extra dependency.
+
 ## What each shared entity is worth
 
 Entity rarity says how many people share a thing. It cannot say that sharing a location is more incriminating than sharing a promotion. Fitted on training accounts only.

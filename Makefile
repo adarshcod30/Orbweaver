@@ -56,6 +56,9 @@ overlay:  ## simulated payment-instrument relation, sensitivity analysis
 views:  ## my 5-relation graph against the authors' 8-relation graph
 	$(PY) -u -m eval.compare_views
 
+sage:  ## optional GraphSAGE scorer, reported beside the default one
+	$(PY) -u -m orbweaver.scoring.sage
+
 report:  ## regenerate docs/results.md, the figures and the case-file page
 	$(PY) -u -m eval.report
 	$(PY) -u -m eval.case_report
