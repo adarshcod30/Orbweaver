@@ -133,6 +133,54 @@ def relation_lift_chart(weights: dict, out: Path) -> Path | None:
     return dest
 
 
+def adversarial_chart(frag: dict, adv: dict | None, out: Path) -> Path | None:
+    """Two ways an attacker can adapt, and what each costs the detector."""
+    r = frag["results"]
+    cells = [(v["cell_size"], v["ring_precision"]) for k, v in r.items()
+             if k != "intact" and v.get("ring_precision") is not None]
+    if not cells:
+        return None
+    cells.sort()
+    intact = r["intact"]["ring_precision"]
+
+    n = 2 if adv else 1
+    fig, axes = plt.subplots(1, n, figsize=(5.4 * n, 4.0), dpi=160)
+    axes = np.atleast_1d(axes)
+
+    ax = axes[0]
+    _style(ax)
+    ax.plot([c for c, _ in cells], [p for _, p in cells], marker="o",
+            color=ACCENT, linewidth=1.8, markersize=6)
+    ax.axhline(intact, color=INK, linestyle="--", linewidth=1.0)
+    ax.annotate(f"intact  {intact}", xy=(cells[-1][0], intact),
+                xytext=(0, 5), textcoords="offset points",
+                fontsize=8, color=INK, ha="right")
+    ax.set_xlabel("cell size the ring was broken into", fontsize=10, color=INK)
+    ax.set_ylabel("ring precision", fontsize=10, color=INK)
+    ax.set_title("Fragmentation", color=INK, fontsize=12, loc="left", pad=10)
+
+    if adv:
+        ax = axes[1]
+        _style(ax)
+        rounds = [row["round"] for row in adv["rounds"]]
+        lift = [row["precision_lift_over_base"] for row in adv["rounds"]]
+        ax.plot(rounds, lift, marker="s", color="#0369a1", linewidth=1.8, markersize=6)
+        ax.axhline(1.0, color=MUTED, linestyle="--", linewidth=1.0)
+        ax.annotate("no better than chance", xy=(rounds[-1], 1.0),
+                    xytext=(0, 5), textcoords="offset points",
+                    fontsize=8, color=MUTED, ha="right")
+        ax.set_xlabel("adaptation round", fontsize=10, color=INK)
+        ax.set_ylabel("precision lift over base rate", fontsize=10, color=INK)
+        ax.set_title("Multi-round duplication", color=INK, fontsize=12,
+                     loc="left", pad=10)
+
+    fig.tight_layout()
+    dest = out / "adversarial.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -237,6 +285,66 @@ def write_results(cfg, score: dict | None, ring: dict | None,
             a("")
         a(f"{c['rupees_at_stake_basis']}.\n")
 
+    frag = None
+    fp_ = proc / "fragmentation.json"
+    if fp_.exists():
+        frag = json.loads(fp_.read_text())
+    if frag:
+        a("## Under adversarial fragmentation\n")
+        a("The obvious counter-move is to break a ring into cells that share "
+          "nothing with each other. It works — nothing survives arbitrary "
+          "fragmentation — so the useful question is *how far* an attacker has "
+          "to go, and what it costs them.\n")
+        a(f"Ground-truth groups are the connected components of the "
+          f"fraud-labelled subgraph: **{frag['ground_truth_groups']:,} groups** "
+          f"covering **{frag['accounts_in_groups']:,} accounts**. Each is split "
+          f"into balanced cells and every edge crossing two cells is deleted; "
+          f"the accounts and their behaviour are untouched.\n")
+        a("| cell size | ring precision | edges cut |")
+        a("|---|---:|---:|")
+        r = frag["results"]
+        a(f"| intact | {r['intact']['ring_precision']} | 0 |")
+        for k, v in r.items():
+            if k == "intact":
+                continue
+            a(f"| {v['cell_size']} | {v['ring_precision']} | {v['edges_cut']:,} |")
+        a("")
+        a("Precision falls off smoothly rather than collapsing: cells of twenty "
+          "cost little, cells of three cost roughly half the precision. That "
+          "last column is the attacker's side of the trade — cutting to cells "
+          "of three severed 65,486 edges, which in operational terms means "
+          "sourcing that many genuinely distinct addresses, devices and "
+          "promotions. The method does not stop fraud; it raises its price.\n")
+
+    adv = None
+    ap = proc / "adversarial_rounds.json"
+    if ap.exists():
+        adv = json.loads(ap.read_text())
+    if adv:
+        a("## Under multi-round adaptation\n")
+        a("Following the published protocol: each round duplicates the fraud "
+          "accounts that were *not* caught, together with their edges, and "
+          "reveals labels only for the accounts that were.\n")
+        a("| round | accounts | base rate | ring precision | lift over base | recall |")
+        a("|---:|---:|---:|---:|---:|---:|")
+        for row in adv["rounds"]:
+            a(f"| {row['round']} | {row['accounts']:,} | {row['base_rate']} | "
+              f"{row['ring_precision']} | {row['precision_lift_over_base']}× | "
+              f"{row['recall']} |")
+        a("")
+        a("**Read the lift column, not the precision column.** Raw precision "
+          "climbs from 0.71 to 0.99 across five rounds, which looks like the "
+          "detector improving under attack. It is not: every round injects "
+          "60,000 accounts that are fraudulent by construction, so the "
+          "population's base rate climbs from 0.22 to 0.61 and precision rises "
+          "with it. Measured against the base rate it is actually working "
+          "from, the detector degrades — **3.17× down to 1.62×**.\n")
+        a("What the protocol does show is that duplication is a poor attack "
+          "on a *ring* detector specifically. A cloned account inherits its "
+          "original's edges, so it lands inside the same dense structure "
+          "instead of escaping it. Fragmentation is the attack that works; "
+          "copying yourself is not.\n")
+
     hostel = None
     hp = proc / "hostel_test.json"
     if hp.exists():
@@ -304,6 +412,14 @@ def main() -> None:
                 figures.append(d)
     if weights:
         d = relation_lift_chart(weights, figs)
+        if d:
+            figures.append(d)
+    fragj = proc / "fragmentation.json"
+    advj = proc / "adversarial_rounds.json"
+    if fragj.exists():
+        d = adversarial_chart(json.loads(fragj.read_text()),
+                              json.loads(advj.read_text()) if advj.exists() else None,
+                              figs)
         if d:
             figures.append(d)
 

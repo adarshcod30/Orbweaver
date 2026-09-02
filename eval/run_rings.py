@@ -60,6 +60,10 @@ def prune(edges: EdgeList, scores: np.ndarray, tau: float) -> EdgeList:
 def main() -> None:
     cfg = load_config()
     top_k = int(os.environ.get("ORBWEAVER_TOP_K", cfg.rings.top_k))
+    # Restrict the grid to one cell, for a deep run at a chosen operating point.
+    only_tau = os.environ.get("ORBWEAVER_TAU")
+    only_lam = os.environ.get("ORBWEAVER_LAMBDA")
+    out_name = os.environ.get("ORBWEAVER_OUT", "ring_report.json")
     proc = cfg.abs_path(cfg.paths.processed)
     split = make_split(cfg)
     n = split.labels.size
@@ -100,11 +104,13 @@ def main() -> None:
           f"{'fraud':>6} {'prec':>7} {'lift':>6} {'norm/fraud':>11} {'fp_cost':>12} {'s':>5}")
 
     best = None
-    for tau in TAU_SWEEP:
+    taus = [float(only_tau)] if only_tau else TAU_SWEEP
+    lams = [float(only_lam)] if only_lam else cfg.rings.lambda_sweep
+    for tau in taus:
         sub = prune(edges, scores, tau)
         if sub.src.size == 0:
             continue
-        for lam in cfg.rings.lambda_sweep:
+        for lam in lams:
             t0 = time.time()
             rings = extract_rings_batch(sub, scores, lambda_=lam,
                                         k_min=cfg.rings.k_min, k_max=cfg.rings.k_max,
@@ -160,7 +166,7 @@ def main() -> None:
         print(f"\nbest cell: tau={tau} lambda={lam} ring precision {p:.4f} "
               f"({p / base_rate:.2f}x the base rate)")
 
-    dest = proc / "ring_report.json"
+    dest = proc / out_name
     dest.write_text(json.dumps(report, indent=2))
     print(f"wrote {dest}")
 

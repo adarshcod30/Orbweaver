@@ -79,6 +79,39 @@ Labels: 6 fraud, 9 normal, 0 unlabelled.
 
 46 promotion orders x an assumed Rs.100 per promotion (PPA ships no monetary amounts; this is an assumption).
 
+## Under adversarial fragmentation
+
+The obvious counter-move is to break a ring into cells that share nothing with each other. It works — nothing survives arbitrary fragmentation — so the useful question is *how far* an attacker has to go, and what it costs them.
+
+Ground-truth groups are the connected components of the fraud-labelled subgraph: **1,498 groups** covering **20,101 accounts**. Each is split into balanced cells and every edge crossing two cells is deleted; the accounts and their behaviour are untouched.
+
+| cell size | ring precision | edges cut |
+|---|---:|---:|
+| intact | 0.71 | 0 |
+| 3 | 0.3831 | 65,486 |
+| 5 | 0.4769 | 59,154 |
+| 10 | 0.5592 | 47,325 |
+| 20 | 0.5885 | 36,470 |
+
+Precision falls off smoothly rather than collapsing: cells of twenty cost little, cells of three cost roughly half the precision. That last column is the attacker's side of the trade — cutting to cells of three severed 65,486 edges, which in operational terms means sourcing that many genuinely distinct addresses, devices and promotions. The method does not stop fraud; it raises its price.
+
+## Under multi-round adaptation
+
+Following the published protocol: each round duplicates the fraud accounts that were *not* caught, together with their edges, and reveals labels only for the accounts that were.
+
+| round | accounts | base rate | ring precision | lift over base | recall |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 3,267,961 | 0.2242 | 0.71 | 3.166× | 0.003108 |
+| 1 | 3,327,961 | 0.3516 | 0.7975 | 2.269× | 0.003462 |
+| 2 | 3,387,961 | 0.443 | 0.9322 | 2.104× | 0.003426 |
+| 3 | 3,447,961 | 0.5118 | 0.9519 | 1.86× | 0.003818 |
+| 4 | 3,507,961 | 0.5655 | 0.9726 | 1.72× | 0.002304 |
+| 5 | 3,567,961 | 0.6085 | 0.9875 | 1.623× | 0.003441 |
+
+**Read the lift column, not the precision column.** Raw precision climbs from 0.71 to 0.99 across five rounds, which looks like the detector improving under attack. It is not: every round injects 60,000 accounts that are fraudulent by construction, so the population's base rate climbs from 0.22 to 0.61 and precision rises with it. Measured against the base rate it is actually working from, the detector degrades — **3.17× down to 1.62×**.
+
+What the protocol does show is that duplication is a poor attack on a *ring* detector specifically. A cloned account inherits its original's edges, so it lands inside the same dense structure instead of escaping it. Fragmentation is the attack that works; copying yourself is not.
+
 ## The hostel test
 
 In India a shared delivery address is routinely a hostel, a paying-guest place, an office or a joint family. A detector that cannot tell one of those from a fraud ring is not deployable, so this looks for the population that most resembles a ring without being one: groups sharing a location entity, big enough to look coordinated, whose labelled members are overwhelmingly normal.
@@ -106,3 +139,5 @@ The separator is the **account score**, not the structure — the touched cluste
 ![ring_precision_grid](figures/ring_precision_grid.png)
 
 ![relation_lift](figures/relation_lift.png)
+
+![adversarial](figures/adversarial.png)
