@@ -173,6 +173,19 @@ def train_sage(cfg: Config | None = None, epochs: int = 3) -> dict:
 
 
 def main() -> None:
+    # torch and torch_geometric are optional extras, so this stage skips
+    # rather than failing when they are absent. It still belongs in
+    # `make reproduce`: leaving it out meant the comparison table in
+    # docs/results.md depended on an artefact nothing in the pipeline
+    # produced, and clearing data/processed silently deleted the GNN row.
+    try:
+        import torch  # noqa: F401
+        import torch_geometric  # noqa: F401
+    except ImportError as exc:
+        print(f"skipping the GNN scorer: {exc.name} is not installed. "
+              "It is an optional extra; see requirements.txt.")
+        return
+
     cfg = load_config()
     out = train_sage(cfg)
     dest = cfg.abs_path(cfg.paths.processed) / "sage_report.json"

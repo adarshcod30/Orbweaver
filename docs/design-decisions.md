@@ -60,6 +60,26 @@ without touching the component that produces the output.
 A GNN is worth trying as an alternative scorer, and I report its numbers
 beside XGBoost's whichever way they fall. It is not on the critical path.
 
+**The GNN is trained in mini-batches, and it has to be.** A full-batch layer
+is not slow here, it is impossible: `SAGEConv` materialises one hidden vector
+per directed edge before aggregating, which on 71.4 million directed edges at
+64 hidden dimensions is **18.3 GB for a single layer**, 36.6 GB for two, and
+about 73 GB once autograd retains them for the backward pass. The machine has
+16 GB, so one layer alone exceeds the whole thing.
+
+Neighbour sampling bounds the batch instead of the graph. At fanout
+`[15, 10]` with 1024 seed accounts, a batch reaches at most ~170,000 edges —
+roughly **43 MB of messages** — and that figure does not change if the graph
+gets ten times larger. Measured peak resident memory for the whole training
+run, including the feature matrix and adjacency held in full, is **3.56 GB**,
+and it trains in about 95 seconds on the M4's GPU.
+
+The sampler is written by hand against a CSR adjacency
+(`orbweaver/scoring/sampler.py`, about forty lines) because PyTorch
+Geometric's own `NeighborLoader` requires `pyg-lib` or `torch-sparse`, and
+neither publishes a wheel for Python 3.13 on arm64 — the same wall that
+stopped the authors' checkpoint.
+
 ## No language model anywhere in the detection or decision path
 
 No large language model scores an account, chooses a ring member, sets a

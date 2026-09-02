@@ -90,7 +90,7 @@ check:  ## tests plus the pre-push check on committed prose
 	./scripts/voice_check.sh
 
 # Every stage from the raw files to the numbers in the documentation.
-reproduce: data graph windows-weighted test score rings hostel views adversarial overlay generalise report  ## everything, end to end
+reproduce: schema data graph windows-weighted test score sage rings hostel views adversarial overlay generalise report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

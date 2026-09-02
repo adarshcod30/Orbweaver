@@ -1,7 +1,10 @@
 """Measure the raw PPA files and write the results to a JSON of schema facts.
 
 Everything in docs/data.md is read out of this script's output, so no
-schema number in the repository is typed in by hand.
+schema number in the repository is typed in by hand. It runs first in
+`make reproduce` for that reason: the schema figures are numbers in the
+documentation like any other, and leaving this outside the pipeline meant
+they were traceable but not actually regenerated.
 
 For each order file it profiles the date range, the user id range, and -
 per relation - the number of distinct entities, the size of the largest,
