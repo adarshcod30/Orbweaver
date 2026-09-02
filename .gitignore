@@ -1,0 +1,41 @@
+# data — never committed
+data/raw/
+data/processed/
+*.parquet
+*.npy
+*.npz
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.joblib
+
+# secrets
+.env
+.env.*
+*.pem
+*.key
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# notebooks
+.ipynb_checkpoints/
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# scratch figures; the final ones under docs/figures are kept
+docs/figures/_scratch/

@@ -1,0 +1,69 @@
+# Every threshold, seed and path lives here, so a run is a function of this
+# file plus the raw data. Seeds are fixed; runs are deterministic.
+
+seed: 20260902
+
+paths:
+  raw: data/raw/ppa
+  processed: data/processed
+  figures: docs/figures
+  results: docs/results.md
+
+data:
+  # order_time is year-shifted to 1000 and has day resolution.
+  # Week 1 (train) is everything up to and including this date;
+  # week 2 (test) is everything from the day after. See docs/data.md.
+  week1_last_day: "1000-05-20"
+  week2_first_day: "1000-05-21"
+  # r2, r4 and r5 have no values at all in the released order files.
+  buildable_relations: [r1, r3, r6, r7, r8]
+  all_relations: [r1, r2, r3, r4, r5, r6, r7, r8]
+
+graph:
+  # Entities shared by more than n_max distinct users induce no edges.
+  # Measured rather than guessed: uncapped, week 2 is 5.46e12 user-pairs;
+  # at 500 it is 5.68e8 and will not fit in 16 GB; at 100 it is 7.18e7.
+  # See docs/data.md and FAILURES.md.
+  n_max: 100
+  n_max_sweep: [50, 100, 200, 500]
+  # w_r(e) = 1 / log(rarity_base + |users(e)|): rarer entity, stronger edge
+  rarity_base: 2.0
+  min_edge_weight: 0.0
+
+subsample:
+  # Entity-anchored. Nodes are never sampled at random.
+  # r1 in the real data is an anonymised integer, not a geohash string, so
+  # there is no prefix to slice - we anchor on whole r1 entities instead.
+  # Anchoring alone splits rings (they are held together by r6/r8, not
+  # location), so the seed set is closed under graph adjacency: rings are
+  # dense, so seeding one member pulls the whole ring in. Label-free.
+  seed_nodes: 18000
+  closure_hops: 1
+  region_relation: r1
+
+scoring:
+  xgb:
+    n_estimators: 400
+    max_depth: 6
+    learning_rate: 0.08
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 5
+    n_jobs: 10
+    tree_method: hist
+  val_fraction: 0.2
+  calibration: isotonic
+
+rings:
+  lambda_sweep: [0.0, 0.5, 1.0, 2.0, 5.0]
+  lambda_default: 1.0
+  k_min: 5
+  top_k: 200
+  g_min: 0.0
+  prune_tau: 0.3
+
+cost:
+  # Both are assumptions and are labelled as such in every output.
+  # PPA ships no monetary amounts at all (docs/data.md).
+  assumed_avg_promo_value_inr: 100.0
+  assumed_avg_order_value_inr: 400.0
