@@ -195,6 +195,35 @@ def adversarial_chart(frag: dict, adv: dict | None, out: Path,
     return dest
 
 
+def ieee_relation_chart(ie: dict, out: Path) -> Path | None:
+    """What each payment-side relation is worth, measured."""
+    w = ie.get("relation_weights") or {}
+    rows = [(k, v["lift"], v.get("meaning", k)) for k, v in w.items()
+            if v.get("lift") is not None]
+    if not rows:
+        return None
+    rows.sort(key=lambda r: -r[1])
+    fig, ax = plt.subplots(figsize=(7.0, 3.8), dpi=160)
+    _style(ax)
+    names = [f"{r[0]}\n{r[2]}" for r in rows]
+    vals = [r[1] for r in rows]
+    colours = [ACCENT if v >= 1.0 else MUTED for v in vals]
+    ax.bar(names, vals, color=colours, width=0.6)
+    ax.axhline(1.0, color=INK, linestyle="--", linewidth=1.0)
+    ax.annotate("no better than chance", xy=(len(rows) - 0.5, 1.0),
+                xytext=(0, 4), textcoords="offset points",
+                fontsize=8, color=INK, ha="right")
+    ax.set_ylabel("fraud–fraud edges vs chance", fontsize=10, color=INK)
+    ax.set_title("What a processor's relations are worth",
+                 color=INK, fontsize=12, loc="left", pad=12)
+    ax.tick_params(axis="x", labelsize=8)
+    fig.tight_layout()
+    dest = out / "ieee_relation_lift.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
 def ring_scorer_charts(rs: dict, out: Path) -> list[Path]:
     """Queue quality by ranking, and whether the confidence means anything."""
     made = []
@@ -529,6 +558,77 @@ def write_results(cfg, score: dict | None, ring: dict | None,
                   f"**{ho['ring_precision']}** across {ho['labelled_members']} "
                   f"labelled members — within a point of the all-labelled "
                   f"figure, so there is no memorisation gap at depth either.\n")
+
+    ie = None
+    iep = proc / "ieee_cis.json"
+    if iep.exists():
+        ie = json.loads(iep.read_text())
+    if ie and ie.get("rings"):
+        a("## A payment processor's graph\n")
+        a("Everything above runs on food-delivery orders. This runs the "
+          "pipeline unchanged on IEEE-CIS — 590,540 card transactions released "
+          "by Vesta — where the relations are the ones a processor actually "
+          "holds: the device, the e-mail domains on both sides, the billing "
+          "address, the browser.\n")
+        a("Three things before any number:\n")
+        for c in ie["caveats"]:
+            a(f"- {c}")
+        a("")
+        sp = ie["split"]
+        a(f"What this dataset has that PPA does not is real timestamps over six "
+          f"months, so the split carries **both** guarantees at once: days "
+          f"{sp['train_days'][0]}–{sp['train_days'][1]} train and "
+          f"{sp['score_days'][0]}–{sp['score_days'][1]} score, *and* the "
+          f"{sp['heldout_accounts']:,} held-out accounts are absent from "
+          "training. On PPA the id spaces forced a within-week arrangement; "
+          "here it is a straightforward forward split.\n")
+        a("| relation | what it means | labelled edges | fraud–fraud lift | weight |")
+        a("|---|---|---:|---:|---:|")
+        for rel, v in sorted(ie["relation_weights"].items(),
+                             key=lambda kv: -kv[1]["lift"]):
+            a(f"| `{rel}` | {v.get('meaning', '')} | {v['edges_labelled']:,} | "
+              f"{v['lift']}× | {v['alpha']} |")
+        a("")
+        a("The billing address with a distance band is the strongest relation "
+          "here at 5.42×, and the device is second at 3.31×. The payer's "
+          "e-mail domain is **below one** — sharing `gmail.com` with someone "
+          "is evidence of nothing, and the weighting drops it to 0.34 without "
+          "being told to.\n")
+        r = ie["rings"]
+        nd = ie["node_scoring_heldout"]
+        a(f"| | |")
+        a(f"|---|---|")
+        a(f"| Held-out base rate | {sp['heldout_base_rate']} |")
+        a(f"| Node scoring | AUPRC {nd['auprc']}, {nd['auprc_lift_over_random']}× random |")
+        a(f"| Rings | {r['n_rings']} over {r['accounts_in_rings']:,} accounts |")
+        a(f"| Ring precision | **{r['ring_precision']}** — "
+          f"**{r['precision_lift_over_base']}× the base rate** |")
+        a(f"| Cost of that | {r['normal_flagged_per_fraud_caught']} good cards "
+          f"flagged per fraudulent one caught |")
+        a("")
+        a(f"**{r['precision_lift_over_base']}× is the largest lift anywhere in "
+          "this project**, and the reason is the base rate: 2.8% of held-out "
+          "accounts are fraudulent here against 22.4% on PPA, so there is far "
+          "more room above chance. The absolute precision, 0.51, is lower than "
+          "PPA's 0.73. Both facts matter and quoting either alone would "
+          "mislead.\n")
+        ac = ie.get("address_cluster_test") or {}
+        if ac.get("clusters_found"):
+            a("### Where this one is weakest\n")
+            a(f"The apartment-building analogue of the hostel test — "
+              f"{ac['criteria']} — finds only **{ac['clusters_found']}** such "
+              f"clusters, and the method touches **{ac['clusters_touched']}** "
+              f"of them. On PPA the equivalent figure is 2 of 2,446.\n")
+            a("That is a bad number and it has an obvious cause: the billing "
+              "address is simultaneously the **most informative relation on "
+              "this dataset** (5.42×) and the thing that legitimately ties "
+              "together every card in a building. The two cannot be separated "
+              "by weighting, because the weighting is what discovered the "
+              "address was informative in the first place. Seven clusters is "
+              "far too small a sample to put a rate on, so I will not — but "
+              "the direction is clear and it is the honest limitation of "
+              "running this on payment data where addresses carry most of the "
+              "signal.\n")
 
     gen = None
     gp = proc / "generalisation.json"
@@ -1234,6 +1334,11 @@ def main() -> None:
                 figures.append(d)
     if weights:
         d = relation_lift_chart(weights, figs)
+        if d:
+            figures.append(d)
+    iej = proc / "ieee_cis.json"
+    if iej.exists():
+        d = ieee_relation_chart(json.loads(iej.read_text()), figs)
         if d:
             figures.append(d)
     rsj = proc / "ring_scorer.json"

@@ -104,6 +104,44 @@ Eight times the depth costs about six points of precision (0.7292 to 0.6654) and
 
 On held-out accounts alone the deep pass gives **0.6557** across 488 labelled members — within a point of the all-labelled figure, so there is no memorisation gap at depth either.
 
+## A payment processor's graph
+
+Everything above runs on food-delivery orders. This runs the pipeline unchanged on IEEE-CIS — 590,540 card transactions released by Vesta — where the relations are the ones a processor actually holds: the device, the e-mail domains on both sides, the billing address, the browser.
+
+Three things before any number:
+
+- This is card fraud, not promotion abuse. A stolen card used across merchants is a different mechanism from many accounts farming one offer; only the graph shape is shared.
+- The account is a card fingerprint (card1|card2|card3|card5|addr1|addr2), not a person. One person with two cards is two accounts here.
+- The identity file covers 144,233 of 590,540 transactions (24.4%), so device and browser edges exist for a quarter of the data and are missing, not zero, for the rest.
+
+What this dataset has that PPA does not is real timestamps over six months, so the split carries **both** guarantees at once: days 1–84 train and 85–182 score, *and* the 10,749 held-out accounts are absent from training. On PPA the id spaces forced a within-week arrangement; here it is a straightforward forward split.
+
+| relation | what it means | labelled edges | fraud–fraud lift | weight |
+|---|---|---:|---:|---:|
+| `address_distance` | the same billing address and distance band | 130,427 | 5.4226× | 2.0694 |
+| `device` | the same device | 27,573 | 3.3057× | 1.2616 |
+| `email_recipient` | the same recipient e-mail domain | 15,507 | 1.8782× | 0.7168 |
+| `browser` | the same browser build | 22,929 | 1.5918× | 0.6075 |
+| `email_payer` | the same payer e-mail domain | 23,687 | 0.9034× | 0.3448 |
+
+The billing address with a distance band is the strongest relation here at 5.42×, and the device is second at 3.31×. The payer's e-mail domain is **below one** — sharing `gmail.com` with someone is evidence of nothing, and the weighting drops it to 0.34 without being told to.
+
+| | |
+|---|---|
+| Held-out base rate | 0.028 |
+| Node scoring | AUPRC 0.1567, 5.594× random |
+| Rings | 25 over 382 accounts |
+| Ring precision | **0.5079** — **18.138× the base rate** |
+| Cost of that | 0.969 good cards flagged per fraudulent one caught |
+
+**18.138× is the largest lift anywhere in this project**, and the reason is the base rate: 2.8% of held-out accounts are fraudulent here against 22.4% on PPA, so there is far more room above chance. The absolute precision, 0.51, is lower than PPA's 0.73. Both facts matter and quoting either alone would mislead.
+
+### Where this one is weakest
+
+The apartment-building analogue of the hostel test — 15+ cards billed to one address, 80%+ of labelled ones good — finds only **7** such clusters, and the method touches **4** of them. On PPA the equivalent figure is 2 of 2,446.
+
+That is a bad number and it has an obvious cause: the billing address is simultaneously the **most informative relation on this dataset** (5.42×) and the thing that legitimately ties together every card in a building. The two cannot be separated by weighting, because the weighting is what discovered the address was informative in the first place. Seven clusters is far too small a sample to put a rate on, so I will not — but the direction is clear and it is the honest limitation of running this on payment data where addresses carry most of the signal.
+
 ## Does any of this work on a graph that is not PPA?
 
 Every other number here comes from one dataset, from one platform, in one country. So I ran the pipeline unchanged on two fraud graphs that share the shape and nothing else — **Amazon** reviewers and **YelpChi** reviews (Dou et al., CIKM 2020; two of GADBench's ten datasets). Both are multi-relation graphs with node labels.
@@ -384,6 +422,8 @@ The separator is the **account score**, not the structure — the touched cluste
 ![ring_precision_grid](figures/ring_precision_grid.png)
 
 ![relation_lift](figures/relation_lift.png)
+
+![ieee_relation_lift](figures/ieee_relation_lift.png)
 
 ![queue_by_ranking](figures/queue_by_ranking.png)
 
