@@ -53,6 +53,10 @@ scoring:
     tree_method: hist
   val_fraction: 0.2
   calibration: isotonic
+  # Every labelled account active in week 2 was also active in week 1, so a
+  # temporal split alone never produces an unseen account. This fraction is
+  # held out of training entirely and is the honest test set.
+  heldout_fraction: 0.25
 
 rings:
   lambda_sweep: [0.0, 0.5, 1.0, 2.0, 5.0]

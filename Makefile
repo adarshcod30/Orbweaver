@@ -18,8 +18,23 @@ download:  ## fetch the PPA release from OSF (~4.0 GB, resumable, md5-verified)
 schema:  ## regenerate data/ppa_schema_facts.json from the raw files
 	$(PY) scripts/inspect_ppa.py
 
-data:  ## raw CSV -> canonical parquet (temporal split applied here)
+data:  ## raw CSV -> canonical parquet (the week cut is applied here)
 	$(PY) -m orbweaver.data.load_ppa
+
+graph:  ## build the multi-relation user graph for both weeks
+	$(PY) -m orbweaver.data.build_graph
+
+features:  ## per-account transaction and graph features
+	$(PY) -m orbweaver.features.node_features
+
+windows:  ## split week 2 into early/late windows and build both
+	$(PY) -m orbweaver.data.windows
+
+subsample:  ## entity-anchored development subsample
+	$(PY) -m orbweaver.data.subsample
+
+score:  ## train the scorer and report detection numbers
+	$(PY) -m eval.score_report
 
 test:  ## schema + temporal-split-leak tests. must pass before any metric
 	$(PY) -m pytest tests/ -q

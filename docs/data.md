@@ -9,8 +9,10 @@ comes out of that JSON — I have not typed any of them in by hand.
 
 I wrote this page because the dataset's own `readme.md` is short and, in two
 places, wrong, and because the paper describes a larger dataset than the one
-you can actually download. Four differences changed how I built the pipeline.
-They are marked as findings below.
+you can actually download. Five differences changed how I built the pipeline,
+and they are marked as findings below. **Finding E is the one that matters
+most** — the two order files use different user id spaces, which rules out the
+train/test split the paper's protocol implies.
 
 ---
 
@@ -124,6 +126,48 @@ The gap between A and B is a measurement of what those three missing relations
 are worth. It also keeps me honest: my numbers come from a strictly smaller
 relation set than the paper's.
 
+## Finding E — the two order files are separately re-indexed from zero
+
+**`order_train.csv` and `order_test.csv` do not share a user id space.**
+Week-1 user 12,345 and week-2 user 12,345 are different people, and there is
+no key that joins them.
+
+I found this the hard way — a scorer that trained cleanly and learned exactly
+nothing, because it was joining week-1 behaviour to week-2 labels through an
+id that does not carry across. `FAILURES.md` has the full account. Three
+checks establish it:
+
+1. **Both id spaces are perfectly dense.** Week 1 holds 3,785,628 distinct ids
+   covering exactly `0…3,785,627`; week 2 holds 3,267,961 covering exactly
+   `0…3,267,960`. Neither has a single gap. A smaller set of users drawn from a
+   shared larger population would be sparse, not contiguous. Both files were
+   renumbered from zero.
+2. **Behaviour does not correlate across the boundary.** For the same id,
+   week-1 against week-2 `n_orders` correlates at **+0.0101**, `degree` at
+   +0.0013, `core_number` at +0.0008 — indistinguishable from independent.
+3. **Week 2 is internally consistent.** The graph built from `order_test.csv`
+   shares 3,079,704 pairs with the shipped `edge.csv` — 30.8 % of it, far
+   above chance. `order_test.csv`, `node.csv` and `edge.csv` agree with one
+   another. Only week 1 stands apart.
+
+**What follows.** Labels live in the week-2 id space, so a labelled account
+cannot be located in week 1 and week-1 features for a labelled account do not
+exist. A week-1-train / week-2-test split is not possible on this release, and
+no amount of care about dates changes that — the obstacle is the id column,
+not the calendar.
+
+So week 2 carries the evaluation, because it is the slice where orders, graph
+and labels share one id space. The split is **account-disjoint** — stratified
+by label, with held-out accounts absent from training and calibration — and
+**temporally forward within week 2**: training features and graph come from
+`1000-05-21…05-24`, and held-out accounts are scored on features and a graph
+built from `1000-05-25…05-28`. That preserves both properties the original
+design was after — no account seen twice, and nothing from the future in a
+training feature — using the only data that can actually support them.
+
+Week 1 remains useful as an unlabelled population for checking that graph
+construction behaves consistently, but it cannot contribute supervision.
+
 ## Finding D — CRLF makes the last column lie
 
 Every line ends `\r\n`, and `r8` is the last column. When `r8` is empty the
@@ -225,8 +269,8 @@ View B only, and labelled as theirs.
   ring ordering "within a few hours" is unsupportable on this data. I say
   "same day" instead, because that is the finest thing the data can show.
 - **`sku_id`** — the product ordered.
-- **`id`** — the user. Week 1 has 3,785,628 users, week 2 has 3,267,961. The id
-  space is shared, so a user in both weeks keeps the same id.
+- **`id`** — the user, but **the two files do not share an id space**. See
+  finding E; this is the single most consequential thing on this page.
 - **`r1…r8`** — the raw anonymised entity ids, written as floats with a `.0`
   suffix, empty when the order does not involve that relation. These are what
   View A is built from.
@@ -276,9 +320,10 @@ rather than being an accident of where a threshold landed.
 
 ## What this means for the rest of the pipeline
 
-1. The temporal split comes from the order files, not from `node.csv` or
-   `edge.csv`. Week 1 is everything up to `1000-05-20`; week 2 starts
-   `1000-05-21`.
+1. Week 2 carries the evaluation, because it is the only slice where orders,
+   graph and labels share an id space (finding E). The split is
+   account-disjoint and temporally forward *within* week 2: train on
+   `05-21…05-24`, score held-out accounts on `05-25…05-28`.
 2. Every node feature is engineered from orders. The dataset ships none.
 3. View A carries five relations with my rarity weights and a cap of 100.
    View B is `edge.csv` as shipped. Reporting both measures what the three

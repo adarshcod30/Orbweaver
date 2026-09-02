@@ -140,6 +140,81 @@ five, and the measurement took four minutes.
 
 ---
 
+## 2 September — I trained a model on 183,370 strangers
+
+**What broke:** my first scorer came out with an AUPRC of 0.2338 against a base
+rate of 0.2242. Precision, recall and F1 were all exactly 0.0000. The model had
+learned nothing at all.
+
+**What I believed:** that I had a modelling problem. Wrong class weights, too
+few trees, features too weak, early stopping firing at iteration 116. I was
+about to start tuning hyperparameters.
+
+The thing that stopped me was printing per-feature means for fraud against
+normal. Every one of the 27 features had a ratio of almost exactly 1.000 —
+`n_orders` 5.9739 against 5.9980, `degree` 34.19 against 34.50, and so on down
+the list. Twenty-seven features cannot all be identical to three decimal places
+by accident. That is not a weak signal, that is no relationship whatsoever,
+and no amount of tuning fixes a table that looks like that.
+
+**What it actually is: the two order files use different user id spaces.**
+`order_train.csv` and `order_test.csv` are each independently re-indexed from
+zero. Week-1 user 12,345 and week-2 user 12,345 are two different people. So
+I had been joining week-1 behaviour to week-2 labels through an id that means
+nothing across the boundary, and training on pure noise. It ran, it converged,
+it produced a number.
+
+Three checks, each independently conclusive:
+
+1. **Both id spaces are perfectly dense.** Week 1 has 3,785,628 distinct ids
+   covering exactly `0…3,785,627`, and week 2 has 3,267,961 covering exactly
+   `0…3,267,960`. If week 2 were a subset of a shared id space, its ids would
+   have gaps — a smaller set of users drawn from a larger population is not
+   contiguous. Neither has a single gap. Both were renumbered from zero.
+2. **Behaviour does not correlate across the boundary.** For the same id,
+   week-1 against week-2 `n_orders` correlates at **+0.0101**; `degree` at
+   +0.0013; `core_number` at +0.0008. Heavy users stay heavy — unless they are
+   not the same users.
+3. **Week-2 ids are internally consistent.** The graph I build from
+   `order_test.csv` shares 3,079,704 pairs with the authors' shipped
+   `edge.csv`, 30.8 % of theirs, which is far from chance. So `order_test.csv`,
+   `node.csv` and `edge.csv` agree with each other. It is only week 1 that is
+   in its own world.
+
+**What this costs:** the split I had planned — and had already written tests
+for — is impossible. Labels live in the week-2 id space, so a labelled
+account cannot be located in week 1, so week-1 features for a labelled account
+do not exist. There is no key to join on, and none can be reconstructed.
+
+**A second thing this quietly invalidated.** An hour earlier I had recorded
+that "every labelled week-2 account was also active in week 1" and treated it
+as a finding about user retention that made memorisation a risk. It was an
+artefact of this same bug: every week-2 id in `0…3,267,960` trivially falls
+inside week 1's dense range `0…3,785,627`, so the intersection was guaranteed
+to be total no matter what the data said. I had measured the id ranges, not
+the users. That "finding" is withdrawn.
+
+**How I got out:** week 2 is internally consistent — orders, graph, and labels
+all share one id space — so it is the slice that can carry the whole
+evaluation. The split is now **account-disjoint within week 2**, stratified by
+label, so no account appears in both training and test. To keep a real
+temporal guarantee rather than just asserting one, I also split week 2's eight
+days in half: features and graph for training come from `05-21…05-24`, and the
+held-out accounts are scored on features and a graph built from
+`05-25…05-28`. That is both account-disjoint and strictly forward in time,
+which is what the original week-1/week-2 design was for.
+
+**What I take from it:** I verified that the id column was contiguous, and
+wrote that down as a schema fact, and then read it as evidence that ids were
+*shared*. Those are different claims and I collapsed them without noticing.
+The bug was invisible at every level above the data — the loader was correct,
+the split was correct, the tests passed, the training converged. Only the
+per-class feature means showed it, and I only printed those because the result
+was too bad to tune my way out of. A model that fails loudly is a gift; the
+same bug with 60 % of the signal intact would have shipped.
+
+---
+
 ## 2 September — the subsample quietly destroyed the rings
 
 **What broke:** my regional subsample ran and looked healthy — 378,440 nodes,

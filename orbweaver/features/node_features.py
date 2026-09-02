@@ -48,7 +48,26 @@ GRAPH_FEATURES = [
     "min_entity_size", "rare_edge_fraction",
     "core_number", "two_hop_size", "neighbour_degree_mean", "neighbour_degree_max",
 ]
-FEATURE_NAMES = ORDER_FEATURES + GRAPH_FEATURES
+
+# Degree split by relation. A single `degree` column throws away the most
+# discriminating axis in this data: r3 (delivery) never exceeds seven users
+# per entity and is close to a private key, while r7 (coupon type) is shared
+# by 97.5% of the population. One edge of each is not one bit of evidence.
+RELATION_DEGREE_FEATURES = ["degree_r1", "degree_r3", "degree_r6",
+                            "degree_r7", "degree_r8"]
+
+# Neighbourhood behaviour. Ring members resemble each other, so the spread of
+# a neighbourhood's behaviour is itself a signal - a coordinated cluster looks
+# unnaturally uniform. These read neighbours' *behaviour*, never their labels.
+NEIGHBOUR_FEATURES = [
+    "neighbour_orders_mean", "neighbour_orders_std",
+    "neighbour_active_days_mean", "neighbour_active_days_std",
+    "neighbour_promo_rate_mean", "neighbour_day_concentration_mean",
+    "orders_vs_neighbour_mean",
+]
+
+FEATURE_NAMES = (ORDER_FEATURES + GRAPH_FEATURES
+                 + RELATION_DEGREE_FEATURES + NEIGHBOUR_FEATURES)
 
 # An edge is "rare" when its rarest shared entity is small enough to be
 # genuine evidence rather than a crowd.
@@ -69,9 +88,13 @@ def _group_nunique(keys: np.ndarray, values: np.ndarray, n: int) -> np.ndarray:
     return np.bincount(k[new], minlength=n).astype(np.int32)
 
 
-def order_features(week: int, cfg: Config, n_users: int) -> dict[str, np.ndarray]:
+def order_features(week: int, cfg: Config, n_users: int,
+                   days: tuple[int, int] | None = None) -> dict[str, np.ndarray]:
     proc = cfg.abs_path(cfg.paths.processed)
     t = pq.read_table(proc / f"orders_week{week}.parquet")
+    if days is not None:
+        d = t["day_ordinal"].to_numpy()
+        t = t.filter(pa.array((d >= days[0]) & (d <= days[1])))
     uid = t["user_id"].to_numpy().astype(np.int64)
     day = t["day_ordinal"].to_numpy().astype(np.int64)
 
@@ -112,7 +135,9 @@ def order_features(week: int, cfg: Config, n_users: int) -> dict[str, np.ndarray
     return {k: np.asarray(v, dtype=np.float32) for k, v in f.items()}
 
 
-def graph_features(week: int, cfg: Config, n_users: int) -> dict[str, np.ndarray]:
+def graph_features(week: int, cfg: Config, n_users: int,
+                   graph_tag: str | None = None,
+                   order_feats: dict[str, np.ndarray] | None = None) -> dict[str, np.ndarray]:
     """Graph-aggregated features.
 
     Every per-node aggregate is a `reduceat` over a once-sorted adjacency
@@ -122,7 +147,8 @@ def graph_features(week: int, cfg: Config, n_users: int) -> dict[str, np.ndarray
     import igraph as ig
 
     proc = cfg.abs_path(cfg.paths.processed)
-    e = pq.read_table(proc / f"edges_week{week}.parquet")
+    name = f"edges_week{week}" + (f"_{graph_tag}" if graph_tag else "")
+    e = pq.read_table(proc / f"{name}.parquet")
     src = e["src"].to_numpy().astype(np.int32)
     dst = e["dst"].to_numpy().astype(np.int32)
     w = e["weight"].to_numpy().astype(np.float32)
@@ -172,18 +198,63 @@ def graph_features(week: int, cfg: Config, n_users: int) -> dict[str, np.ndarray
     f["neighbour_degree_max"] = per_node(other_deg, np.maximum.reduceat)
     # Sum of neighbour degrees = 2-hop reach counted with multiplicity.
     f["two_hop_size"] = per_node(other_deg, np.add.reduceat)
-    del other_deg, node, order
+    del other_deg, node
 
+    # Degree per relation, read off the bitmask each edge carries.
+    e2 = pq.read_table(proc / f"{name}.parquet", columns=["relation_mask"])
+    relmask = np.concatenate([e2["relation_mask"].to_numpy()] * 2).astype(np.int16)
+    del e2
+    for bit, rel in enumerate(cfg.data.buildable_relations):
+        present = ((relmask >> bit) & 1).astype(np.float64)
+        f[f"degree_{rel}"] = per_node(present, np.add.reduceat)
+    del relmask
+
+    # Neighbourhood behaviour. Ring members look alike, so a low spread across
+    # a neighbourhood is itself evidence of coordination. Second moment via
+    # E[x^2] - E[x]^2 so it stays one reduceat per statistic.
+    if order_feats is not None:
+        other = np.concatenate([dst, src])
+        safe_deg = np.maximum(deg, 1)
+        for src_name, out_name in (("n_orders", "neighbour_orders"),
+                                   ("active_days", "neighbour_active_days")):
+            vals = order_feats[src_name].astype(np.float64)[other]
+            mean = per_node(vals, np.add.reduceat) / safe_deg
+            sq = per_node(vals ** 2, np.add.reduceat) / safe_deg
+            f[f"{out_name}_mean"] = np.where(deg > 0, mean, 0.0)
+            f[f"{out_name}_std"] = np.where(deg > 0, np.sqrt(np.maximum(sq - mean ** 2, 0.0)), 0.0)
+        for src_name, out_name in (("promo_order_rate", "neighbour_promo_rate_mean"),
+                                   ("day_concentration", "neighbour_day_concentration_mean")):
+            vals = order_feats[src_name].astype(np.float64)[other]
+            f[out_name] = np.where(deg > 0, per_node(vals, np.add.reduceat) / safe_deg, 0.0)
+        # How unlike its own neighbourhood an account is. A member of a
+        # coordinated cluster sits close to 1; an ordinary customer varies.
+        own = order_feats["n_orders"].astype(np.float64)
+        f["orders_vs_neighbour_mean"] = np.where(
+            f["neighbour_orders_mean"] > 0, own / np.maximum(f["neighbour_orders_mean"], 1e-9), 0.0)
+        del other
+
+    del order
     g = ig.Graph(n=n_users, edges=np.stack([src, dst], axis=1))
     f["core_number"] = np.asarray(g.coreness(), dtype=np.float64)
     del g
     return {k: np.asarray(v, dtype=np.float32) for k, v in f.items()}
 
 
-def build_features(week: int, cfg: Config | None = None, *, force: bool = False) -> Path:
+def build_features(week: int, cfg: Config | None = None, *,
+                   days: tuple[int, int] | None = None, tag: str | None = None,
+                   force: bool = False) -> Path:
+    """Features for one week, optionally restricted to a day window.
+
+    When `days` and `tag` are given, both the order statistics and the graph
+    aggregates are computed from that window only, using the graph built with
+    the same tag. Keeping the two in step is what makes a forward-in-time
+    evaluation meaningful: a training feature must not see an order that had
+    not happened yet.
+    """
     cfg = cfg or load_config()
     proc = cfg.abs_path(cfg.paths.processed)
-    dest = proc / f"features_week{week}.parquet"
+    suffix = f"_{tag}" if tag else ""
+    dest = proc / f"features_week{week}{suffix}.parquet"
     if dest.exists() and not force:
         return dest
 
@@ -191,8 +262,8 @@ def build_features(week: int, cfg: Config | None = None, *, force: bool = False)
     n_users = int(orders["user_id"].to_numpy().max()) + 1
     del orders
 
-    feats = order_features(week, cfg, n_users)
-    feats.update(graph_features(week, cfg, n_users))
+    feats = order_features(week, cfg, n_users, days)
+    feats.update(graph_features(week, cfg, n_users, tag, order_feats=feats))
     missing = set(FEATURE_NAMES) - set(feats)
     if missing:
         raise RuntimeError(f"missing features: {sorted(missing)}")
@@ -200,8 +271,9 @@ def build_features(week: int, cfg: Config | None = None, *, force: bool = False)
     table = pa.table({"user_id": pa.array(np.arange(n_users, dtype=np.int32))} |
                      {k: pa.array(feats[k]) for k in FEATURE_NAMES})
     pq.write_table(table, dest, compression="zstd")
-    (proc / f"features_week{week}_manifest.json").write_text(json.dumps({
-        "week": week, "n_users": n_users, "n_features": len(FEATURE_NAMES),
+    (proc / f"features_week{week}{suffix}_manifest.json").write_text(json.dumps({
+        "week": week, "tag": tag, "days": list(days) if days else None,
+        "n_users": n_users, "n_features": len(FEATURE_NAMES),
         "features": FEATURE_NAMES, "bytes": dest.stat().st_size}, indent=2))
     return dest
 

@@ -58,6 +58,7 @@ class ScoringCfg(BaseModel):
     xgb: XGBCfg
     val_fraction: float
     calibration: str
+    heldout_fraction: float
 
 
 class RingsCfg(BaseModel):

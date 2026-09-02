@@ -72,3 +72,66 @@ def test_all_orders_accounted_for():
     kept = sum(w["rows"] for w in m["weeks"].values())
     dropped = sum(f["boundary_rows_dropped"] for f in m["files"].values())
     assert read == kept + dropped
+
+
+# --- the evaluation split itself -------------------------------------------
+# The two order files are separately re-indexed, so the evaluation lives
+# inside week 2 and has to earn both guarantees there. These check it does.
+
+
+def _split():
+    from eval.split import make_split
+    return make_split(CFG)
+
+
+def test_heldout_accounts_are_absent_from_training_and_calibration():
+    s = _split()
+    assert np.intersect1d(s.train, s.test).size == 0
+    assert np.intersect1d(s.val, s.test).size == 0
+    assert np.intersect1d(s.train_pool, s.test).size == 0
+
+
+def test_train_and_val_are_disjoint():
+    s = _split()
+    assert np.intersect1d(s.train, s.val).size == 0
+
+
+def test_heldout_is_stratified():
+    """Held-out and training pools must share a fraud rate, or precision
+    figures are not comparable between them."""
+    s = _split()
+    assert s.y(s.test).mean() == pytest.approx(s.y(s.train_pool).mean(), abs=0.005)
+
+
+def test_split_covers_every_labelled_account_exactly_once():
+    s = _split()
+    union = np.concatenate([s.train, s.val, s.test])
+    assert np.unique(union).size == union.size, "an account appears in two groups"
+    labelled = np.flatnonzero(s.labels != -1)
+    assert np.array_equal(np.sort(union), np.sort(labelled))
+
+
+def test_split_is_deterministic_under_the_configured_seed():
+    a, b = _split(), _split()
+    assert np.array_equal(a.test, b.test)
+    assert np.array_equal(a.train, b.train)
+
+
+@pytest.mark.skipif(not (PROC / "edges_week2_late_manifest.json").exists(),
+                    reason="run `make windows` first")
+def test_scoring_window_is_strictly_after_the_training_window():
+    """The whole point of the two windows: no training feature may see an
+    order that had not happened yet at decision time."""
+    early = json.loads((PROC / "edges_week2_early_manifest.json").read_text())
+    late = json.loads((PROC / "edges_week2_late_manifest.json").read_text())
+    assert early["days"][1] < late["days"][0]
+
+
+@pytest.mark.skipif(not (PROC / "features_week2_late.parquet").exists(),
+                    reason="run `make windows` first")
+def test_window_features_differ_from_each_other():
+    """A guard against silently loading the same table twice, which would
+    make the forward-in-time claim vacuous."""
+    a = pq.read_table(PROC / "features_week2_early.parquet", columns=["n_orders"])
+    b = pq.read_table(PROC / "features_week2_late.parquet", columns=["n_orders"])
+    assert not np.array_equal(a["n_orders"].to_numpy(), b["n_orders"].to_numpy())

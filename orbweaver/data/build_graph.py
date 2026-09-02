@@ -111,23 +111,34 @@ def relation_edges(user_id: np.ndarray, entity: np.ndarray, *, n_max: int,
 
 
 def build_graph(week: int, cfg: Config | None = None, *, n_max: int | None = None,
+                days: tuple[int, int] | None = None, tag: str | None = None,
                 force: bool = False) -> Path:
-    """Build the week's multi-relation graph (View A) and write it to parquet.
+    """Build a multi-relation graph (View A) and write it to parquet.
 
     Edges are aggregated across relations: one row per undirected user pair,
     carrying the summed rarity weight, how many relations connect the pair,
     and the size of the rarest entity they share (the strongest evidence).
+
+    `days` restricts the orders to a day-ordinal range, inclusive at both
+    ends. A graph used to produce training features must be built only from
+    days that precede the scoring window, otherwise a feature depends on
+    orders that had not happened yet when the decision was made.
     """
     cfg = cfg or load_config()
     n_max = n_max or cfg.graph.n_max
     proc = cfg.abs_path(cfg.paths.processed)
     suffix = "" if n_max == cfg.graph.n_max else f"_nmax{n_max}"
+    if tag:
+        suffix += f"_{tag}"
     dest = proc / f"edges_week{week}{suffix}.parquet"
     if dest.exists() and not force:
         return dest
 
     orders = pq.read_table(proc / f"orders_week{week}.parquet")
     n_users = int(orders["user_id"].to_numpy().max()) + 1
+    if days is not None:
+        d = orders["day_ordinal"].to_numpy()
+        orders = orders.filter(pa.array((d >= days[0]) & (d <= days[1])))
     users = orders["user_id"].to_numpy()
 
     all_src, all_dst, all_w, all_esz, all_rel = [], [], [], [], []
@@ -180,6 +191,7 @@ def build_graph(week: int, cfg: Config | None = None, *, n_max: int | None = Non
 
     manifest = {
         "week": week, "n_max": n_max, "rarity_base": cfg.graph.rarity_base,
+        "days": list(days) if days else None, "tag": tag,
         "relations": cfg.data.buildable_relations,
         "raw_pairs_before_aggregation": raw_pairs,
         "unique_edges": n_edges,
