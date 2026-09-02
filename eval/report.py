@@ -505,6 +505,63 @@ def write_results(cfg, score: dict | None, ring: dict | None,
     return dest
 
 
+def update_readme(cfg, score, ring, views) -> Path | None:
+    """Fill the generated block in README.md.
+
+    The README must not contain a number I typed. Everything between the
+    markers is rewritten from the run artefacts on every `make reproduce`.
+    """
+    readme = cfg.abs_path(".") / "README.md"
+    if not readme.exists() or not ring:
+        return None
+    start, end = "<!-- results:start -->", "<!-- results:end -->"
+    text = readme.read_text()
+    if start not in text or end not in text:
+        return None
+
+    best = ring.get("best_cell", {})
+    cell = ring.get("grid", {}).get(
+        f"tau={best.get('tau')},lambda={best.get('lambda')}", {})
+    unpruned = next((b for b in ring["grid"].values() if b.get("tau") == 0.0), {})
+    base = ring.get("base_rate_among_labelled")
+
+    L = [start, ""]
+    L.append("| | |")
+    L.append("|---|---|")
+    L.append(f"| Graph | {ring['graph']['edges']:,} edges over the accounts "
+             f"active in the scoring window |")
+    if cell:
+        L.append(f"| Ring precision | **{cell.get('ring_precision')}** against a "
+                 f"base rate of {base} — {cell.get('precision_lift_over_base')}× |")
+        L.append(f"| Cost of that | {cell.get('normal_flagged_per_fraud_caught')} "
+                 f"real customers placed in a ring per fraudster caught |")
+    if unpruned:
+        L.append(f"| Without the score cut-off | {unpruned.get('ring_precision')} — "
+                 f"{unpruned.get('precision_lift_over_base')}×, i.e. worse than "
+                 f"picking at random |")
+    if score:
+        b = score["results"]["test_heldout__labelled_only"]
+        L.append(f"| Account scorer | AUPRC {b['auprc']} on held-out accounts, "
+                 f"{b['auprc_lift_over_random']}× random |")
+    if views and views.get("delta"):
+        d = views["delta"]
+        L.append(f"| Three relations I cannot rebuild | worth "
+                 f"{d['precision']:+.3f} precision and {d['fraud_members']:+d} "
+                 f"fraud accounts on the authors' own graph |")
+    hp = cfg.abs_path(cfg.paths.processed) / "hostel_test.json"
+    if hp.exists():
+        h = json.loads(hp.read_text())
+        L.append(f"| Hostel test | {h['clusters_with_a_member_in_a_ring']} of "
+                 f"{h['clusters_found']:,} legitimate co-located groups touched "
+                 f"({h['share_of_clusters_touched']:.2%}) |")
+    L += ["", end]
+
+    head, rest = text.split(start, 1)
+    _, tail = rest.split(end, 1)
+    readme.write_text(head + "\n".join(L) + tail)
+    return readme
+
+
 def main() -> None:
     cfg = load_config()
     proc = cfg.abs_path(cfg.paths.processed)
@@ -539,6 +596,11 @@ def main() -> None:
 
     dest = write_results(cfg, score, ring, weights, figures)
     print(f"wrote {dest}")
+    vj = proc / "view_comparison.json"
+    rd = update_readme(cfg, score, ring,
+                       json.loads(vj.read_text()) if vj.exists() else None)
+    if rd:
+        print(f"wrote {rd}")
     for f in figures:
         print(f"wrote {f}")
 
