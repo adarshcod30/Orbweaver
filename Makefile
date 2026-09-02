@@ -5,7 +5,7 @@ PY := python3
 .DEFAULT_GOAL := help
 .PHONY: help setup download schema data graph windows weights features subsample \
         windows-weighted score sage rings rings-deep hostel views adversarial overlay generalise \
-        download-gadbench report reproduce test clean
+        download-gadbench merchant-view report reproduce reproduce-core test clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -76,6 +76,9 @@ download-gadbench:  ## Amazon and YelpChi from the CARE-GNN release (~44 MB)
 generalise:  ## run the whole pipeline on Amazon and YelpChi
 	$(PY) -u -m eval.generalise
 
+merchant-view:  ## what one business sees against what the platform sees
+	$(PY) -u -m eval.merchant_view
+
 sage:  ## optional GraphSAGE scorer, reported beside the default one
 	$(PY) -u -m orbweaver.scoring.sage
 
@@ -94,7 +97,9 @@ check:  ## tests plus the pre-push check on committed prose
 	./scripts/voice_check.sh
 
 # Every stage from the raw files to the numbers in the documentation.
-reproduce: schema data graph windows-weighted test score sage rings rings-deep hostel views adversarial overlay generalise report  ## everything, end to end
+reproduce-core: schema data graph windows-weighted test score sage rings rings-deep hostel views adversarial overlay generalise report  ## the core pipeline on its own, about 50 min
+
+reproduce: reproduce-core merchant-view report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

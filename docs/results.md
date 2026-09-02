@@ -149,7 +149,39 @@ And it sharpens the aggregator argument below: if three more platform-native rel
 
 The two views differ in both relation coverage and edge weighting, and View B covers the whole of week 2 while View A covers its later half. Those effects are not separable from this comparison; it bounds the combined difference rather than isolating the three missing relations.
 
-## The relation this dataset cannot contain — simulated
+## The relation only the platform can see, measured
+
+Elsewhere I argue that a payment aggregator holds an edge no single merchant can build, and I argue it with synthetic edges conditioned on the labels. That is a sensitivity analysis and it is labelled as one. Two of the review-fraud datasets let me make the same argument with a **real** relation and real labels, by taking it away and rerunning everything.
+
+On YelpChi the nodes are reviews, and `net_rur` means *posted by the same user* — the one link that spans businesses. A single business sees its own reviews and the links among them; it cannot see that this reviewer left forty more elsewhere. Dropping that relation gives the merchant's view of the same fraud.
+
+| | edges | node AUPRC | ring precision | accounts surfaced |
+|---|---:|---:|---:|---:|
+| platform, all three relations | 3,846,979 | 0.8557 | 0.9956 | 681 |
+| one business, without it | 3,797,664 | 0.8292 | 0.9488 | 1,856 |
+
+**Read the last column before the third.** The merchant arm surfaces 1,856 accounts against 681, because removing a sparse, highly discriminating relation leaves a denser and blunter graph, and peeling then returns larger, looser rings. Raw fraud counts across the two arms are therefore not comparable — the arm that surfaces more accounts finds more fraud almost by definition. The question a review queue actually asks is how much of what it looks at is worth looking at:
+
+| accounts reviewed | platform | one business | difference |
+|---:|---:|---:|---:|
+| 250 | 0.988 | 0.964 | +0.024 |
+| 500 | 0.994 | 0.956 | +0.038 |
+
+That relation is **1.3% of the edges**. Removing it costs +0.0265 node AUPRC and, at equal review capacity, between two and four points of ring precision. This is the cross-merchant argument made on real data rather than simulated edges.
+
+Amazon does not split as cleanly, and I would rather say so than force the analogy. Its three relations — co-review, same rating that week, near-identical review text — could all be approximated by a large seller from its own reviews, so none of them is the off-property link. Leave-one-out is the honest version of the same question:
+
+| relation removed | meaning | edges left | ring precision | change |
+|---|---|---:|---:|---:|
+| `net_upu` | reviewed the same product | 4,333,171 | 0.9784 | +0.0038 |
+| `net_usu` | same rating that week | 1,196,498 | 0.9909 | -0.0087 |
+| `net_uvu` | near-identical review text | 3,654,037 | 0.9847 | -0.0025 |
+
+No single relation is load-bearing here: dropping any one of the three moves ring precision by less than a point, and dropping the same-rating-that-week relation slightly improves it. Amazon's three views of a reviewer are largely redundant, which is the opposite of what YelpChi shows and is worth stating rather than hiding.
+
+### The same question on PPA, where the relation has to be simulated
+
+The section above is the evidence; this one is a sensitivity check. PPA contains no payment relation at all, so the only way to ask the question on this dataset is to invent the edges — and edges invented from the labels can only ever bound what such a relation might be worth, never demonstrate it.
 
 > **Simulated relation — sensitivity analysis. Every number in this section comes from synthetic edges and none of it is a claim about Orbweaver's real performance.**
 
@@ -235,5 +267,7 @@ The separator is the **account score**, not the structure — the touched cluste
 ![ring_precision_grid](figures/ring_precision_grid.png)
 
 ![relation_lift](figures/relation_lift.png)
+
+![merchant_vs_platform](figures/merchant_vs_platform.png)
 
 ![adversarial](figures/adversarial.png)

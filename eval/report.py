@@ -181,6 +181,61 @@ def adversarial_chart(frag: dict, adv: dict | None, out: Path) -> Path | None:
     return dest
 
 
+def merchant_vs_platform_chart(mv: dict, out: Path) -> Path | None:
+    """What one business sees against what the platform sees.
+
+    Plotted at equal review capacity, because the two arms surface different
+    numbers of accounts and a raw comparison flatters whichever one happens to
+    produce larger rings.
+    """
+    y = mv["datasets"].get("yelpchi")
+    if not y or "merchant" not in y["arms"]:
+        return None
+    rows = [(int(k), v) for k, v in y["at_equal_review_budget"].items() if k != "all"]
+    if not rows:
+        return None
+    rows.sort()
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160)
+
+    ax = axes[0]
+    _style(ax)
+    x = np.arange(len(rows))
+    w = 0.38
+    ax.bar(x - w / 2, [v["platform_precision"] for _, v in rows], w,
+           label="the platform", color=ACCENT)
+    ax.bar(x + w / 2, [v["merchant_precision"] for _, v in rows], w,
+           label="one business", color=MUTED)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{n:,}" for n, _ in rows])
+    ax.set_xlabel("accounts reviewed", fontsize=10, color=INK)
+    ax.set_ylabel("share worth reviewing", fontsize=10, color=INK)
+    lo = min(min(v["merchant_precision"] for _, v in rows),
+             min(v["platform_precision"] for _, v in rows))
+    ax.set_ylim(max(0.0, lo - 0.06), 1.0)
+    ax.set_title("At equal review capacity", color=INK, fontsize=12, loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=9)
+
+    ax = axes[1]
+    _style(ax)
+    p_, m_ = y["arms"]["platform"], y["arms"]["merchant"]
+    ax.bar(["the platform", "one business"],
+           [p_["accounts_in_rings"], m_["accounts_in_rings"]],
+           color=[ACCENT, MUTED], width=0.55)
+    ax.set_ylabel("accounts surfaced for review", fontsize=10, color=INK)
+    ax.set_title("...to surface the same kind of case",
+                 color=INK, fontsize=12, loc="left", pad=10)
+    for i, v in enumerate([p_["accounts_in_rings"], m_["accounts_in_rings"]]):
+        ax.annotate(f"{v:,}", xy=(i, v), xytext=(0, 4), textcoords="offset points",
+                    ha="center", fontsize=9, color=INK)
+
+    fig.tight_layout()
+    dest = out / "merchant_vs_platform.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -442,12 +497,89 @@ def write_results(cfg, score: dict | None, ring: dict | None,
           "relation that no single platform can build is worth taking seriously.\n")
         a(f"{views['caveat']}\n")
 
+    mv = None
+    mvp = proc / "merchant_view.json"
+    if mvp.exists():
+        mv = json.loads(mvp.read_text())
+    if mv and mv.get("datasets"):
+        a("## The relation only the platform can see, measured\n")
+        a("Elsewhere I argue that a payment aggregator holds an edge no single "
+          "merchant can build, and I argue it with synthetic edges conditioned "
+          "on the labels. That is a sensitivity analysis and it is labelled as "
+          "one. Two of the review-fraud datasets let me make the same argument "
+          "with a **real** relation and real labels, by taking it away and "
+          "rerunning everything.\n")
+
+        y = mv["datasets"].get("yelpchi")
+        if y and "merchant" in y["arms"]:
+            p_, m_ = y["arms"]["platform"], y["arms"]["merchant"]
+            a(f"On YelpChi the nodes are reviews, and `{y['cross_business_relation']}` "
+              f"means *{y['cross_business_meaning']}* — the one link that spans "
+              "businesses. A single business sees its own reviews and the links "
+              "among them; it cannot see that this reviewer left forty more "
+              "elsewhere. Dropping that relation gives the merchant's view of "
+              "the same fraud.\n")
+            a("| | edges | node AUPRC | ring precision | accounts surfaced |")
+            a("|---|---:|---:|---:|---:|")
+            a(f"| platform, all three relations | {p_['edges']:,} | "
+              f"{p_['node_auprc']} | {p_['ring_precision']} | "
+              f"{p_['accounts_in_rings']:,} |")
+            a(f"| one business, without it | {m_['edges']:,} | "
+              f"{m_['node_auprc']} | {m_['ring_precision']} | "
+              f"{m_['accounts_in_rings']:,} |")
+            a("")
+            d = y["delta"]
+            a(f"**Read the last column before the third.** The merchant arm "
+              f"surfaces {m_['accounts_in_rings']:,} accounts against "
+              f"{p_['accounts_in_rings']:,}, because removing a sparse, highly "
+              "discriminating relation leaves a denser and blunter graph, and "
+              "peeling then returns larger, looser rings. Raw fraud counts "
+              "across the two arms are therefore not comparable — the arm that "
+              "surfaces more accounts finds more fraud almost by definition. "
+              "The question a review queue actually asks is how much of what it "
+              "looks at is worth looking at:\n")
+            a("| accounts reviewed | platform | one business | difference |")
+            a("|---:|---:|---:|---:|")
+            for k, v in y["at_equal_review_budget"].items():
+                if k == "all":
+                    continue
+                a(f"| {v['accounts_reviewed']:,} | {v['platform_precision']} | "
+                  f"{v['merchant_precision']} | {v['delta_precision']:+} |")
+            a("")
+            share = 100 * d["edges"] / p_["edges"]
+            a(f"That relation is **{share:.1f}% of the edges**. Removing it costs "
+              f"{d['node_auprc']:+} node AUPRC and, at equal review capacity, "
+              "between two and four points of ring precision. This is the "
+              "cross-merchant argument made on real data rather than simulated "
+              "edges.\n")
+
+        am = mv["datasets"].get("amazon")
+        if am and am.get("leave_one_out"):
+            a("Amazon does not split as cleanly, and I would rather say so than "
+              "force the analogy. Its three relations — co-review, same rating "
+              "that week, near-identical review text — could all be approximated "
+              "by a large seller from its own reviews, so none of them is the "
+              "off-property link. Leave-one-out is the honest version of the "
+              "same question:\n")
+            a("| relation removed | meaning | edges left | ring precision | change |")
+            a("|---|---|---:|---:|---:|")
+            for r, v in am["leave_one_out"].items():
+                a(f"| `{r}` | {v['dropped_meaning']} | {v['edges']:,} | "
+                  f"{v['ring_precision']} | {v['delta_ring_precision']:+} |")
+            a("")
+            a(f"{am['finding']}\n")
+
     agg = None
     agp = proc / "aggregator_overlay.json"
     if agp.exists():
         agg = json.loads(agp.read_text())
     if agg:
-        a("## The relation this dataset cannot contain — simulated\n")
+        a("### The same question on PPA, where the relation has to be simulated\n")
+        a("The section above is the evidence; this one is a sensitivity check. "
+          "PPA contains no payment relation at all, so the only way to ask the "
+          "question on this dataset is to invent the edges — and edges invented "
+          "from the labels can only ever bound what such a relation might be "
+          "worth, never demonstrate it.\n")
         a("> **Simulated relation — sensitivity analysis. Every number in this "
           "section comes from synthetic edges and none of it is a claim about "
           "Orbweaver's real performance.**\n")
@@ -669,6 +801,11 @@ def main() -> None:
                 figures.append(d)
     if weights:
         d = relation_lift_chart(weights, figs)
+        if d:
+            figures.append(d)
+    mvj = proc / "merchant_view.json"
+    if mvj.exists():
+        d = merchant_vs_platform_chart(json.loads(mvj.read_text()), figs)
         if d:
             figures.append(d)
     fragj = proc / "fragmentation.json"

@@ -58,11 +58,23 @@ RELATION_MEANING = {
 }
 
 
-def load_mat(name: str, cfg: Config):
+def load_mat(name: str, cfg: Config, drop: tuple[str, ...] = ()):
+    """Load one dataset, optionally without some of its relations.
+
+    `drop` exists so the same pipeline can be run over a restricted view of
+    the graph - what a single business can see, as against what the platform
+    can see. Dropping a relation removes its edges entirely, which also
+    changes every graph-derived feature, so the whole pipeline downstream
+    genuinely runs on the smaller view rather than on a masked copy of the
+    larger one.
+    """
     import scipy.io as sio
     import scipy.sparse as sp
 
     fname, relations = DATASETS[name]
+    relations = [r for r in relations if r not in drop]
+    if not relations:
+        raise ValueError(f"{name}: dropping {drop} leaves no relations")
     path = cfg.abs_path(cfg.paths.raw).parent / "gadbench" / fname
     mat = sio.loadmat(str(path))
     labels = np.asarray(mat["label"]).ravel().astype(np.int8)
@@ -143,13 +155,58 @@ def graph_features(edges: EdgeList, mask: np.ndarray, n_relations: int,
     return np.column_stack(cols).astype(np.float32)
 
 
-def run_one(name: str, cfg: Config) -> dict:
+BUDGETS = (250, 500, 1000, 2000)
+
+
+def precision_at_budget(rings, y: np.ndarray, base: float) -> dict:
+    """Fraud share among the first `budget` accounts a reviewer would see.
+
+    Rings arrive in rank order, so a queue works through them one at a time.
+    Accumulating members until the budget is full and measuring the fraud
+    share there is the only way to compare two graphs whose rings differ in
+    size: otherwise the arm that happens to produce larger rings surfaces more
+    accounts and is penalised on precision for reasons that have nothing to do
+    with how good it is.
+    """
+    seen: list[int] = []
+    have = set()
+    out: dict = {}
+    budgets = sorted(BUDGETS)
+    bi = 0
+    for r in rings:
+        for m in r.members.tolist():
+            if m not in have:
+                have.add(m)
+                seen.append(m)
+        while bi < len(budgets) and len(seen) >= budgets[bi]:
+            b = budgets[bi]
+            lab = y[np.array(seen[:b])]
+            out[str(b)] = {
+                "accounts": b,
+                "precision": round(float(lab.mean()), 4),
+                "fraud": int((lab == 1).sum()),
+                "lift_over_base": round(float(lab.mean()) / base, 3) if base else None,
+            }
+            bi += 1
+    # Whatever the queue actually reached, so a short arm still reports.
+    if seen:
+        lab = y[np.array(seen)]
+        out["all"] = {
+            "accounts": len(seen),
+            "precision": round(float(lab.mean()), 4),
+            "fraud": int((lab == 1).sum()),
+            "lift_over_base": round(float(lab.mean()) / base, 3) if base else None,
+        }
+    return out
+
+
+def run_one(name: str, cfg: Config, drop: tuple[str, ...] = ()) -> dict:
     import xgboost as xgb
     from sklearn.isotonic import IsotonicRegression
 
     from eval.metrics import evaluate
 
-    labels, feats, per_rel, relations = load_mat(name, cfg)
+    labels, feats, per_rel, relations = load_mat(name, cfg, drop)
     n = labels.size
     rng = np.random.default_rng(cfg.seed)
 
@@ -207,7 +264,15 @@ def run_one(name: str, cfg: Config) -> dict:
         rings_out[str(tau)] = {
             "tau": tau, "n_rings": len(rings),
             "accounts_in_rings": int(members.size),
+            "fraud_members": int((lab == 1).sum()),
+            "normal_members": int((lab == 0).sum()),
             "ring_precision": round(prec, 4),
+            # Precision at a fixed number of accounts reviewed. "Top 25 rings"
+            # is not a fixed budget when ring sizes differ between two graphs -
+            # one arm can surface three times as many accounts and look worse
+            # on precision purely for that reason. Taking rings in rank order
+            # until a budget is filled makes the arms comparable.
+            "precision_at_budget": precision_at_budget(rings, y, base),
             "precision_lift_over_base": round(prec / base, 3) if base else None,
             "heldout_members": int(in_test.size),
             "heldout_precision": round(float(y[in_test].mean()), 4) if in_test.size else None,
@@ -217,6 +282,7 @@ def run_one(name: str, cfg: Config) -> dict:
 
     return {
         "dataset": name,
+        "dropped_relations": list(drop),
         "nodes": int(n),
         "edges": int(edges.src.size),
         "relations": {r: RELATION_MEANING.get(r, r) for r in relations},
