@@ -67,7 +67,13 @@ rings:
   # holds 454k accounts, so a large region of moderate density outscores a
   # small tight one. This makes it densest-at-most-k, still NP-hard.
   k_max: 500
-  top_k: 200
+  # How many rings to surface per setting. This is a review-queue depth, not a
+  # detection limit: rings are for human review, so the honest question is what
+  # share of the first N is worth looking at. The sweep runs 15 settings, so a
+  # larger value multiplies the whole run. A deeper single pass is available
+  # with ORBWEAVER_TOP_K, and precision decays gently with depth - 0.710 at 25,
+  # 0.646 at 200.
+  top_k: 25
   g_min: 0.0
   prune_tau: 0.3
 
