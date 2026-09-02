@@ -217,7 +217,7 @@ same bug with 60 % of the signal intact would have shipped.
 
 ## 2 September — `make reproduce` worked on my machine and nowhere else
 
-*(Three separate failures, found by the same check.)*
+*(Four separate failures, found by the same check. The fourth was the worst.)*
 
 **What broke:** I cloned the repository into a clean directory, pointed it at
 the raw data, and ran `make reproduce`. It failed on the third target:
@@ -272,6 +272,38 @@ most of the documentation *before* running this check, all of it describing a
 pipeline that could not actually run anywhere else. A fresh clone is the only
 thing that separates "it works" from "it works here", and it found three real
 defects in about an hour.
+
+**And then a fourth, which was the worst of them.** With the clone finally
+running green, its ring precision came out 0.7292 where mine said 0.7100. My
+first thought was that something was non-deterministic and I started looking at
+XGBoost's threading.
+
+It was not non-determinism. **Every number I had published was computed from a
+stale scores file.** I wrote `scores_week2.parquet` early on with a one-off
+call, then later fitted the relation weights, which changed the features
+underneath it — and because `make score` did not persist scores until I fixed
+that an hour earlier, nothing ever overwrote the old file. Every downstream
+stage, and therefore every figure in the results, inherited scores computed
+from features that no longer existed.
+
+I checked rather than assumed, in this order: the graph is bit-identical
+between the two machines, both feature tables are bit-identical, XGBoost
+reproduces exactly at one thread and at ten, and regenerating the scores
+locally produced a file identical to the clone's. The pipeline is
+deterministic. The artefact was simply out of date, and nothing in the pipeline
+could tell me so, because a parquet file on disk looks exactly as valid whether
+it was written five minutes or five hours ago.
+
+Every reported number is now from the clean run. They moved a little, and all
+in the same direction — precision 0.710 → 0.729, false-positive cost 0.408 →
+0.371 real customers per catch, hostel clusters touched 5 → 2 — which is
+almost worse than if they had moved against me, because a change that flatters
+you is one you are far less likely to go looking for.
+
+**What I take from it:** an intermediate artefact with no provenance is a
+liability. The fix that mattered was not any of the three bugs; it was making
+`make score` write the file it reports on, so the thing on disk and the thing
+in the numbers can never again be two different objects.
 
 ---
 
