@@ -446,13 +446,16 @@ def write_results(cfg, score: dict | None, ring: dict | None,
               f"{row['ring_precision']} | {row['precision_lift_over_base']}× | "
               f"{row['recall']} |")
         a("")
-        a("**Read the lift column, not the precision column.** Raw precision "
-          "climbs from 0.71 to 0.99 across five rounds, which looks like the "
-          "detector improving under attack. It is not: every round injects "
-          "60,000 accounts that are fraudulent by construction, so the "
-          "population's base rate climbs from 0.22 to 0.61 and precision rises "
-          "with it. Measured against the base rate it is actually working "
-          "from, the detector degrades — **3.17× down to 1.62×**.\n")
+        r0, rN = adv["rounds"][0], adv["rounds"][-1]
+        a(f"**Read the lift column, not the precision column.** Raw precision "
+          f"climbs from {r0['ring_precision']} to {rN['ring_precision']} across "
+          f"{rN['round']} rounds, which looks like the detector improving under "
+          f"attack. It is not: every round injects accounts that are fraudulent "
+          f"by construction, so the population's base rate climbs from "
+          f"{r0['base_rate']} to {rN['base_rate']} and precision rises with it. "
+          f"Measured against the base rate it is actually working from, the "
+          f"detector degrades — **{r0['precision_lift_over_base']}× down to "
+          f"{rN['precision_lift_over_base']}×**.\n")
         a("What the protocol does show is that duplication is a poor attack "
           "on a *ring* detector specifically. A cloned account inherits its "
           "original's edges, so it lands inside the same dense structure "

@@ -52,12 +52,12 @@ every time.
 | | |
 |---|---|
 | Graph | 35,701,750 edges over the accounts active in the scoring window |
-| Ring precision | **0.71** against a base rate of 0.2242 — 3.166× |
-| Cost of that | 0.408 real customers placed in a ring per fraudster caught |
+| Ring precision | **0.7292** against a base rate of 0.2242 — 3.252× |
+| Cost of that | 0.371 real customers placed in a ring per fraudster caught |
 | Without the score cut-off | 0.0696 — 0.31×, i.e. worse than picking at random |
-| Account scorer | AUPRC 0.3788 on held-out accounts, 1.689× random |
-| Three relations I cannot rebuild | worth +0.097 precision and +293 fraud accounts on the authors' own graph |
-| Hostel test | 5 of 2,446 legitimate co-located groups touched (0.20%) |
+| Account scorer | AUPRC 0.3796 on held-out accounts, 1.693× random |
+| Three relations I cannot rebuild | worth +0.122 precision and +269 fraud accounts on the authors' own graph |
+| Hostel test | 2 of 2,446 legitimate co-located groups touched (0.08%) |
 
 <!-- results:end -->
 

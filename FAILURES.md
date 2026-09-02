@@ -353,8 +353,8 @@ threshold, then look for dense structure inside that region. The effect is not
 subtle:
 
     no cut-off      ring precision 0.070    0.31x base rate
-    tau = 0.3       ring precision 0.541    2.41x base rate
-    tau = 0.5       ring precision 0.710    3.17x base rate
+    tau = 0.3       ring precision 0.579    2.58x base rate
+    tau = 0.5       ring precision 0.729    3.25x base rate
 
 The score cut-off was in my design as a *speed* optimisation — a way to avoid
 peeling the whole graph. It turns out to be the thing that makes the output

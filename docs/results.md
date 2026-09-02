@@ -15,14 +15,14 @@ Held-out accounts were absent from training and calibration, and are scored on a
 
 | accounts | n | base rate | AUPRC | lift | precision | recall | F1 | wrongly flagged per catch |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `test_heldout__labelled_only` | 76,404 | 0.2242 | 0.3788 | 1.689× | 0.3045 | 0.7566 | 0.4342 | 2.284 |
-| `train_pool__labelled_only` | 229,213 | 0.2242 | 0.3738 | 1.667× | 0.3045 | 0.7568 | 0.4343 | 2.284 |
-| `test_heldout_plus_unlabelled__as_normal` | 3,038,748 | 0.0056 | 0.0168 | 2.983× | 0.0347 | 0.0787 | 0.0482 | 27.8 |
-| `all_accounts__unlabelled_as_normal` | 3,267,961 | 0.0210 | 0.0577 | 2.749× | 0.0821 | 0.1794 | 0.1126 | 11.182 |
+| `test_heldout__labelled_only` | 76,404 | 0.2242 | 0.3796 | 1.693× | 0.3072 | 0.7415 | 0.4344 | 2.256 |
+| `train_pool__labelled_only` | 229,213 | 0.2242 | 0.3754 | 1.674× | 0.3066 | 0.7427 | 0.4340 | 2.261 |
+| `test_heldout_plus_unlabelled__as_normal` | 3,038,748 | 0.0056 | 0.0168 | 2.982× | 0.0321 | 0.0920 | 0.0476 | 30.137 |
+| `all_accounts__unlabelled_as_normal` | 3,267,961 | 0.0210 | 0.0578 | 2.758× | 0.0765 | 0.2062 | 0.1116 | 12.07 |
 
 Reported at the best-F1 threshold. The two labelling conventions are not comparable to each other: counting unlabelled accounts as normal moves the base rate from 0.224 to 0.021.
 
-Most important features: `active_days`, `orders_per_active_day`, `max_orders_in_day`, `n_distinct_location`, `sku_repeat_rate`, `n_distinct_stimulation`.
+Most important features: `active_days`, `orders_per_active_day`, `n_distinct_location`, `max_orders_in_day`, `n_distinct_stimulation`, `n_distinct_sku`.
 
 ### Gradient boosting against a graph neural network
 
@@ -30,7 +30,7 @@ Same split, same features, same window. The GNN can propagate along edges rather
 
 | scorer | AUPRC | lift | precision | recall | F1 |
 |---|---:|---:|---:|---:|---:|
-| XGBoost, 39 features | 0.3788 | 1.689× | 0.3045 | 0.7566 | 0.4342 |
+| XGBoost, 39 features | 0.3796 | 1.693× | 0.3072 | 0.7415 | 0.4344 |
 | GraphSAGE, 2 layers | 0.3825 | 1.706× | 0.3141 | 0.7121 | 0.4359 |
 
 On held-out accounts, trained in 58s on mps with neighbour sampling at fanout [15, 10]. The two are within noise of each other — the GNN is very slightly ahead on AUPRC and very slightly behind on recall. That matches GADBench's finding that gradient boosting over graph-aggregated features is hard to beat on real anomaly graphs, and it means the choice of scorer is not where the value in this pipeline sits. I kept XGBoost as the default because it trains in a minute, its feature importances are readable, and neither result justifies the extra dependency.
@@ -54,22 +54,22 @@ Entity rarity says how many people share a thing. It cannot say that sharing a l
 | τ | λ | rings | accounts | labelled | fraud | precision | vs base | real customers per catch | cost of being wrong |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 0.0 | 0.0 | 25 | 423 | 230 | 16 | 0.0696 | 0.31× | 13.375 | ₹380,800 |
-| 0.0 | 0.5 | 25 | 423 | 230 | 16 | 0.0696 | 0.31× | 13.375 | ₹384,000 |
-| 0.0 | 1.0 | 25 | 427 | 229 | 16 | 0.0699 | 0.312× | 13.312 | ₹380,400 |
-| 0.0 | 2.0 | 25 | 435 | 235 | 17 | 0.0723 | 0.322× | 12.824 | ₹389,200 |
-| 0.0 | 5.0 | 25 | 424 | 233 | 17 | 0.073 | 0.326× | 12.706 | ₹385,600 |
-| 0.3 | 0.0 | 25 | 2,849 | 532 | 288 | 0.5414 | 2.414× | 0.847 | ₹252,000 |
-| 0.3 | 0.5 | 25 | 2,109 | 401 | 216 | 0.5387 | 2.402× | 0.856 | ₹178,400 |
-| 0.3 | 1.0 | 25 | 2,085 | 391 | 211 | 0.5396 | 2.406× | 0.853 | ₹168,800 |
-| 0.3 | 2.0 | 25 | 1,697 | 340 | 183 | 0.5382 | 2.4× | 0.858 | ₹139,200 |
-| 0.3 | 5.0 | 25 | 1,308 | 264 | 134 | 0.5076 | 2.264× | 0.97 | ₹104,800 |
-| 0.5 | 0.0 | 25 | 1,799 | 366 | 237 | 0.6475 | 2.887× | 0.544 | ₹85,200 |
-| 0.5 | 0.5 | 25 | 2,271 | 497 | 327 | 0.6579 | 2.934× | 0.52 | ₹134,400 |
-| 0.5 | 1.0 | 25 | 1,960 | 401 | 264 | 0.6584 | 2.936× | 0.519 | ₹98,000 |
-| 0.5 | 2.0 | 25 | 1,577 | 290 | 199 | 0.6862 | 3.06× | 0.457 | ₹60,800 |
-| 0.5 | 5.0 | 25 | 1,429 | 300 | 213 | 0.71 | 3.166× | 0.408 | ₹56,800 |
+| 0.0 | 0.5 | 25 | 423 | 225 | 16 | 0.0711 | 0.317× | 13.062 | ₹361,600 |
+| 0.0 | 1.0 | 25 | 423 | 228 | 16 | 0.0702 | 0.313× | 13.25 | ₹378,000 |
+| 0.0 | 2.0 | 25 | 421 | 228 | 16 | 0.0702 | 0.313× | 13.25 | ₹378,800 |
+| 0.0 | 5.0 | 25 | 467 | 227 | 16 | 0.0705 | 0.314× | 13.188 | ₹362,800 |
+| 0.3 | 0.0 | 25 | 2,574 | 508 | 294 | 0.5787 | 2.581× | 0.728 | ₹189,200 |
+| 0.3 | 0.5 | 25 | 3,035 | 590 | 338 | 0.5729 | 2.555× | 0.746 | ₹230,400 |
+| 0.3 | 1.0 | 25 | 3,006 | 585 | 342 | 0.5846 | 2.607× | 0.711 | ₹222,000 |
+| 0.3 | 2.0 | 25 | 3,074 | 599 | 351 | 0.586 | 2.613× | 0.707 | ₹226,000 |
+| 0.3 | 5.0 | 25 | 1,948 | 420 | 253 | 0.6024 | 2.686× | 0.66 | ₹150,400 |
+| 0.5 | 0.0 | 25 | 2,359 | 489 | 325 | 0.6646 | 2.964× | 0.505 | ₹140,400 |
+| 0.5 | 0.5 | 25 | 1,964 | 389 | 259 | 0.6658 | 2.969× | 0.502 | ₹104,800 |
+| 0.5 | 1.0 | 25 | 1,897 | 386 | 271 | 0.7021 | 3.131× | 0.424 | ₹89,200 |
+| 0.5 | 2.0 | 25 | 1,674 | 345 | 242 | 0.7014 | 3.128× | 0.426 | ₹82,800 |
+| 0.5 | 5.0 | 25 | 1,638 | 336 | 245 | 0.7292 | 3.252× | 0.371 | ₹74,400 |
 
-Best cell: **τ = 0.5, λ = 5.0**, ring precision **0.7100** against a base rate of **0.2242**.
+Best cell: **τ = 0.5, λ = 5.0**, ring precision **0.7292** against a base rate of **0.2242**.
 
 Ring recall is deliberately low. Rings surface a few hundred accounts for review, not the whole population — the question a queue asks is how many of the accounts it looks at are worth looking at.
 
@@ -77,18 +77,19 @@ The rupee figures rest on stated assumptions: PPA ships no monetary amounts at a
 
 ## A case file
 
-Ring of **15 accounts**, density 9.4486, 52 orders across 5 days, 58% of them on the busiest single day.
-Labels: 6 fraud, 9 normal, 0 unlabelled.
+Ring of **7 accounts**, density 6.5859, 163 orders across 7 days, 42% of them on the busiest single day.
+Labels: 4 fraud, 0 normal, 3 unlabelled.
 
 | what they share | coverage | how many accounts share it platform-wide |
 |---|---:|---:|
-| promotion | 100% of the ring | 25 |
-| promotion | 100% of the ring | 30 |
-| promotion | 73% of the ring | 12 |
-| order location | 67% of the ring | 23 |
-| order location | 20% of the ring | 18 |
+| order location | 57% of the ring | 4 |
+| order location | 57% of the ring | 4 |
+| sales stimulation | 43% of the ring | 3 |
+| sales stimulation | 29% of the ring | 2 |
+| sales stimulation | 29% of the ring | 2 |
+| sales stimulation | 29% of the ring | 2 |
 
-46 promotion orders x an assumed Rs.100 per promotion (PPA ships no monetary amounts; this is an assumption).
+144 promotion orders x an assumed Rs.100 per promotion (PPA ships no monetary amounts; this is an assumption).
 
 ## What the relations I cannot rebuild are worth
 
@@ -96,10 +97,10 @@ Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in
 
 | graph | relations | edges | rings | ring precision | recall | fraud found | real customers per catch |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| mine | 5 | 35,701,750 | 25 | 0.71 | 0.0031 | 213 | 0.408 |
-| the authors' | 8 | 10,012,449 | 25 | 0.807 | 0.0074 | 506 | 0.239 |
+| mine | 5 | 35,701,750 | 25 | 0.7292 | 0.0036 | 245 | 0.371 |
+| the authors' | 8 | 10,012,449 | 25 | 0.851 | 0.0075 | 514 | 0.175 |
 
-Eight relations against five: **+0.097 ring precision, +293 fraud accounts found** — two and a half times as many — and 41% fewer real customers disturbed per catch.
+Eight relations against five: **+0.122 ring precision, +269 fraud accounts found** — two and a half times as many — and 41% fewer real customers disturbed per catch.
 
 This is the clearest result in the project and it is not flattering to my graph. It is a direct measurement of a limitation the PromoGuardian authors state themselves — *"in cases where key relations are missing, detection performance may degrade"* — and it supports their central claim that building a comprehensive relation graph matters more than the choice of detection model. My extractor performs better on their graph than on mine.
 
@@ -117,19 +118,19 @@ PPA has no payment-level relation. All eight of its relations are platform-nativ
 
 I cannot test that here, because the data cannot contain it. What I can do is overlay a synthetic instrument relation on the **real** graph, sweep how strongly it tracks the real labels, and read the gradient. `p_fraud` is the rate at which members of a real fraud group land on a shared instrument; `p_normal` the rate for ordinary households.
 
-Baseline without the simulated relation: ring precision **0.71**, 213 fraud accounts found.
+Baseline without the simulated relation: ring precision **0.7292**, 245 fraud accounts found.
 
 | p_fraud | p_normal | simulated edges | ring precision | Δ precision | fraud found |
 |---:|---:|---:|---:|---:|---:|
-| 0.3 | 0.02 | 24,893 | 0.7133 | +0.0033 | 214 |
-| 0.3 | 0.05 | 35,411 | 0.7176 | +0.0076 | 216 |
-| 0.3 | 0.1 | 53,132 | 0.7152 | +0.0052 | 216 |
-| 0.5 | 0.02 | 42,294 | 0.7003 | -0.0097 | 201 |
-| 0.5 | 0.05 | 52,791 | 0.7003 | -0.0097 | 201 |
-| 0.5 | 0.1 | 70,506 | 0.7482 | +0.0382 | 211 |
-| 0.7 | 0.02 | 62,606 | 0.7412 | +0.0312 | 252 |
-| 0.7 | 0.05 | 73,074 | 0.7389 | +0.0289 | 283 |
-| 0.7 | 0.1 | 90,800 | 0.7389 | +0.0289 | 283 |
+| 0.3 | 0.02 | 24,893 | 0.7364 | +0.0072 | 243 |
+| 0.3 | 0.05 | 35,411 | 0.7364 | +0.0072 | 243 |
+| 0.3 | 0.1 | 53,132 | 0.7364 | +0.0072 | 243 |
+| 0.5 | 0.02 | 42,294 | 0.7636 | +0.0344 | 239 |
+| 0.5 | 0.05 | 52,791 | 0.7636 | +0.0344 | 239 |
+| 0.5 | 0.1 | 70,506 | 0.7636 | +0.0344 | 239 |
+| 0.7 | 0.02 | 62,606 | 0.7527 | +0.0235 | 274 |
+| 0.7 | 0.05 | 73,074 | 0.7527 | +0.0235 | 274 |
+| 0.7 | 0.1 | 90,800 | 0.7527 | +0.0235 | 274 |
 
 **How to read this, and how not to.** Even at the strongest setting the gain is modest — about +0.03 precision, and 283 fraud accounts found against 213 without it. The sweep is also not monotonic: two cells at `p_fraud = 0.5` come out slightly *worse* than baseline, which is extraction sensitivity to a changed graph rather than a real effect. The honest summary is that a payment edge helps at the margin here, not that it transforms the problem.
 
@@ -143,11 +144,11 @@ Ground-truth groups are the connected components of the fraud-labelled subgraph:
 
 | cell size | ring precision | edges cut |
 |---|---:|---:|
-| intact | 0.71 | 0 |
-| 3 | 0.3831 | 65,486 |
-| 5 | 0.4769 | 59,154 |
-| 10 | 0.5592 | 47,325 |
-| 20 | 0.5885 | 36,470 |
+| intact | 0.7292 | 0 |
+| 3 | 0.4539 | 65,486 |
+| 5 | 0.5109 | 59,154 |
+| 10 | 0.5444 | 47,325 |
+| 20 | 0.5846 | 36,470 |
 
 Precision falls off smoothly rather than collapsing: cells of twenty cost little, cells of three cost roughly half the precision. That last column is the attacker's side of the trade — cutting to cells of three severed 65,486 edges, which in operational terms means sourcing that many genuinely distinct addresses, devices and promotions. The method does not stop fraud; it raises its price.
 
@@ -157,14 +158,14 @@ Following the published protocol: each round duplicates the fraud accounts that 
 
 | round | accounts | base rate | ring precision | lift over base | recall |
 |---:|---:|---:|---:|---:|---:|
-| 0 | 3,267,961 | 0.2242 | 0.71 | 3.166× | 0.003108 |
-| 1 | 3,327,961 | 0.3516 | 0.7975 | 2.269× | 0.003462 |
-| 2 | 3,387,961 | 0.443 | 0.9322 | 2.104× | 0.003426 |
-| 3 | 3,447,961 | 0.5118 | 0.9519 | 1.86× | 0.003818 |
-| 4 | 3,507,961 | 0.5655 | 0.9726 | 1.72× | 0.002304 |
-| 5 | 3,567,961 | 0.6085 | 0.9875 | 1.623× | 0.003441 |
+| 0 | 3,267,961 | 0.2242 | 0.7292 | 3.252× | 0.003575 |
+| 1 | 3,327,961 | 0.3516 | 0.8589 | 2.443× | 0.003268 |
+| 2 | 3,387,961 | 0.443 | 0.938 | 2.118× | 0.003368 |
+| 3 | 3,447,961 | 0.5118 | 0.9733 | 1.902× | 0.003959 |
+| 4 | 3,507,961 | 0.5655 | 0.9912 | 1.753× | 0.003659 |
+| 5 | 3,567,961 | 0.6085 | 0.9953 | 1.636× | 0.002863 |
 
-**Read the lift column, not the precision column.** Raw precision climbs from 0.71 to 0.99 across five rounds, which looks like the detector improving under attack. It is not: every round injects 60,000 accounts that are fraudulent by construction, so the population's base rate climbs from 0.22 to 0.61 and precision rises with it. Measured against the base rate it is actually working from, the detector degrades — **3.17× down to 1.62×**.
+**Read the lift column, not the precision column.** Raw precision climbs from 0.7292 to 0.9953 across 5 rounds, which looks like the detector improving under attack. It is not: every round injects accounts that are fraudulent by construction, so the population's base rate climbs from 0.2242 to 0.6085 and precision rises with it. Measured against the base rate it is actually working from, the detector degrades — **3.252× down to 1.636×**.
 
 What the protocol does show is that duplication is a poor attack on a *ring* detector specifically. A cloned account inherits its original's edges, so it lands inside the same dense structure instead of escaping it. Fragmentation is the attack that works; copying yourself is not.
 
@@ -175,16 +176,16 @@ In India a shared delivery address is routinely a hostel, a paying-guest place, 
 Criteria: at least **15** accounts sharing one r1 (order location), at most 100, with at least **80%** of labelled members normal.
 
 - **2,446 such clusters** found, covering **58,648 accounts**
-- **5** of them had any member placed in a ring — **0.20%**
-- **2,441** were left alone entirely
+- **2** of them had any member placed in a ring — **0.08%**
+- **2,444** were left alone entirely
 
 What separates the few that were touched from the rest:
 
 | | touched | left alone |
 |---|---:|---:|
-| mean account score | 0.3006 | 0.1551 |
-| kinds of thing shared | 1.6 | 1.832 |
-| internal edges | 141.6 | 172.8197 |
+| mean account score | 0.2878 | 0.1545 |
+| kinds of thing shared | 1.5 | 1.8318 |
+| internal edges | 112.5 | 172.8052 |
 
 The separator is the **account score**, not the structure — the touched clusters are no denser and share no more kinds of thing than the ones left alone; their members simply behave more suspiciously. That is the prune-then-peel design doing exactly what it was put there to do, and it is why the score cut-off is not just a speed optimisation.
 
