@@ -67,6 +67,12 @@ every time.
 | Account scorer | AUPRC 0.3796 on held-out accounts, 1.693× random |
 | Three relations I cannot rebuild | worth +0.122 precision and +269 fraud accounts on the authors' own graph |
 | Hostel test | 2 of 2,446 legitimate co-located groups touched (0.08%) |
+| The relation only a platform can see | worth +0.024 to +0.038 ring precision at equal review capacity (250-500 accounts) |
+| Time to detection, replaying night by night | median 4 of 4 nights; 33.4% of a ring's spend still ahead of it when it is found |
+| Ranking rings by confidence | the mean member score wins at 200 rings (0.6739) — a trained ring model gets 0.5989, density 0.5814 |
+| Yesterday's rings as a feature | +0.0011 AUPRC — it reaches 0.15% of held-out accounts. `/check` answers in 0.01 ms at the median |
+| Behaviour edges against fragmentation | +0.0237 ring precision when the ring is split into threes, -0.0023 when it is split into twenties |
+| The same method on a payment processor's graph | 0.5079 precision, 18.138× its base rate, at 0.969 good cards per fraudulent one caught |
 
 <!-- results:end -->
 

@@ -3,6 +3,15 @@
 An honest log, written as things happen rather than reconstructed at the end.
 Each entry records what I believed, why it was wrong, and what fixed it.
 
+Six of these are worth reading before the rest:
+
+- [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
+- [2 September — a column that was full of values it did not have](#2-september--a-column-that-was-full-of-values-it-did-not-have) — a line ending made an empty column look 100% present
+- [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
+- [2 September — the subsample quietly destroyed the rings](#2-september--the-subsample-quietly-destroyed-the-rings) — shrinking the graph to fit memory removed the thing I was looking for
+- [3 September — I measured two systems at two different budgets and read the sign backwards](#3-september--i-measured-two-systems-at-two-different-budgets-and-read-the-sign-backwards) — an unfair comparison that reversed the project's own argument
+- [3 September — the model I built lost to the baseline I almost did not run](#3-september--the-model-i-built-lost-to-the-baseline-i-almost-did-not-run) — the crudest ranking beat the trained one, and stayed in
+
 ---
 
 ## 2 September — the first version of this project was the wrong project
@@ -732,3 +741,129 @@ can be obeyed exactly while the thing it exists to protect ("don't destroy
 rings") is destroyed anyway. The only reason I caught this is that I had made
 `ring_preservation` an *output* of the sampler instead of an assumption.
 Measure the property the rule is protecting, not compliance with the rule.
+
+---
+
+## 3 September — I measured two systems at two different budgets and read the sign backwards
+
+**What broke:** the comparison at the heart of this project's business argument.
+On YelpChi I ran the extractor twice: once with all three relations, and once
+without `net_rur` — "posted by the same user" — which is the link only a
+platform holds, because no single business can see that the reviewer who hit it
+also hit forty others. I took the top 25 rings from each arm and compared them.
+The merchant arm found 1,761 fraud accounts; the platform arm found 678. Read
+straight, the relation only a platform can see was worth *minus* 1,083 fraud
+accounts, and the aggregator's advantage — the thing this whole project argues
+for — was actively harmful.
+
+**What I believed:** that two runs of the same extractor, at the same operating
+point, cut at the same top-25, were comparable. Same algorithm, same cut, same
+labels; the only difference is the relation, so the difference in the answer is
+what the relation is worth.
+
+**Why that was wrong:** the top 25 *rings* is not a fixed amount of work. The
+merchant arm's 25 rings held 1,856 accounts. The platform arm's held 681. I was
+comparing an analyst team that reviews 1,856 accounts against a team that
+reviews 681 and concluding the first team was better because it found more
+fraud. It reviewed nearly three times as much. Of course it found more.
+
+**What fixed it:** measuring at equal review capacity instead. `precision_at_budget`
+walks the ranked rings, accumulates distinct accounts until it hits a budget,
+and reports the fraud share at 250, 500 and 1,000 accounts reviewed — with both
+arms pinned to the same score cut-off, which they had not been either. At 250
+accounts the platform arm is ahead by +0.024 precision; at 500, by +0.038. The
+sign flipped the moment the comparison was fair.
+
+**What I take from it:** a per-item cut is not a unit of work when the items are
+different sizes. Any comparison of two ranked lists whose entries cost different
+amounts to act on has to fix the cost and let the count fall out, never the
+other way round. I had the wrong version in a figure and a written paragraph
+before I noticed, and what made me look was not a test — it was that the number
+was too large. A relation cannot plausibly be worth minus a thousand accounts.
+
+---
+
+## 3 September — behavioural edges helped most where the graph was already ruined
+
+**What broke:** nothing crashed. I added behavioural-twin edges — mutual
+5-nearest-neighbour links in standardised feature space, drawn only between
+accounts the scorer had already flagged, and weighted the same way every other
+relation is: their measured fraud-fraud lift on training accounts (1.247) times
+the median entity edge weight, giving 0.230. The point was to give fragmentation
+something it cannot cut. An attacker who splits a ring into cells of three so
+that no shared address or promotion joins them has not changed how those
+accounts behave.
+
+**What I believed:** that recovery would grow with the damage. The more entity
+edges an attacker severs, the more the behavioural edges should matter, so the
+curve should rise monotonically as the cells get smaller.
+
+**What actually happened:**
+
+| cells of | without twins | with twins | change |
+|---|---|---|---|
+| intact | 0.7292 | 0.7458 | +0.0166 |
+| 20 | 0.5846 | 0.5823 | −0.0023 |
+| 10 | 0.5444 | 0.5546 | +0.0102 |
+| 5 | 0.5109 | 0.5114 | +0.0005 |
+| 3 | 0.4539 | 0.4776 | +0.0237 |
+
+The biggest recovery is at the worst damage, which is the direction I wanted.
+But it is not monotonic, and at cells of 20 the twins cost a little.
+
+**My hypothesis, labelled as one:** when the graph is cut into threes almost no
+entity structure survives, so 97,016 twin edges are a large share of what is
+left and their weaker evidence is still the best evidence available. At cells of
+20 enough entity structure survives that the twin edges are largely redundant
+with it, and adding a weaker relation on top of a sufficient one dilutes the
+peeling objective slightly. That story fits the shape. I have not proved it, and
+I am not going to pretend the middle of the curve is explained.
+
+**The cost, stated:** the hostel test goes from 2 of 2,446 legitimate clusters
+touched to 3. Behavioural edges do connect some genuinely similar ordinary
+customers, which is exactly what you would expect them to do.
+
+**What I take from it:** I nearly reported "behavioural edges recover
+fragmentation damage" on the strength of the cells-of-3 number alone, because it
+was the number I had gone looking for. All four cell sizes are in the report
+because one point is not a curve, and the flat and negative points are the ones
+that make the +0.0237 believable.
+
+---
+
+## 3 September — the most useful relation is the one that ties innocent people together
+
+**What broke:** the collateral test, on the run with the best headline in the
+project. IEEE-CIS gives 0.5079 ring precision at 18.14× its base rate — the
+largest lift anywhere in this work. Then I ran the address-cluster test, which
+is the apartment-building analogue of the hostel test: find billing addresses
+with 15 or more cards on them where at least 80% of the labelled cards are good,
+and count how many of those the rings touch. On the delivery data the equivalent
+test touches 2 of 2,446 legitimate co-located groups. Here it touches 4 of 7.
+
+**What I believed:** that a weighting rule which measured its way to a clean
+collateral profile on one dataset would keep that profile on a new set of
+relations, because the rule is the same and the rule is what protects innocent
+groups.
+
+**Why that was wrong:** the weighting is doing precisely what it should, and
+that is the problem. `address_distance` is the most informative relation this
+dataset offers — 5.42× fraud-fraud lift over 130,427 labelled edges — so it
+earns the heaviest weight, 2.07, more than three times the payer e-mail domain.
+It is also the single thing that legitimately ties together every card billed to
+one apartment building. Those two facts are the same fact. The weighting cannot
+separate them, because the weighting is what discovered the address was
+informative in the first place. On the delivery data the strongest relations
+were the device and the payment instrument, which co-locate far less innocently,
+and I had quietly generalised from that.
+
+**What I have not done:** seven is not a sample. Four of seven is four events,
+not 57%, and I have not put a rate on it anywhere — the section in
+`docs/results.md` says so in as many words. Establishing the real rate needs a
+dataset with more buildings in it than this one has.
+
+**What I take from it:** the hostel test result I am proud of is a property of
+*which relations that dataset happens to have*, not a property of the method. A
+relation set where the most predictive edge is also the most innocently shared
+one would need an address-level exclusion list before I would run it against
+real customers, and I would rather write that down than let 18× stand on its own.

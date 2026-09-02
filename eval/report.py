@@ -1299,12 +1299,82 @@ def update_readme(cfg, score, ring, views) -> Path | None:
         L.append(f"| Three relations I cannot rebuild | worth "
                  f"{d['precision']:+.3f} precision and {d['fraud_members']:+d} "
                  f"fraud accounts on the authors' own graph |")
-    hp = cfg.abs_path(cfg.paths.processed) / "hostel_test.json"
-    if hp.exists():
-        h = json.loads(hp.read_text())
+    proc = cfg.abs_path(cfg.paths.processed)
+
+    def artefact(name):
+        f = proc / name
+        return json.loads(f.read_text()) if f.exists() else None
+
+    h = artefact("hostel_test.json")
+    if h:
         L.append(f"| Hostel test | {h['clusters_with_a_member_in_a_ring']} of "
                  f"{h['clusters_found']:,} legitimate co-located groups touched "
                  f"({h['share_of_clusters_touched']:.2%}) |")
+
+    # One row for each of the six things I went back and measured afterwards.
+    # Three of them are negative results and say so here rather than only in
+    # docs/results.md, because a summary table that quietly drops the failures
+    # is a dishonest summary table.
+    mv = artefact("merchant_view.json")
+    if mv:
+        y = mv["datasets"].get("yelpchi", {})
+        budgets = [b for k, b in y.get("at_equal_review_budget", {}).items()
+                   if k != "all"]
+        if budgets:
+            lo = min(b["delta_precision"] for b in budgets)
+            hi = max(b["delta_precision"] for b in budgets)
+            n_lo = min(b["accounts_reviewed"] for b in budgets)
+            n_hi = max(b["accounts_reviewed"] for b in budgets)
+            L.append(f"| The relation only a platform can see | worth "
+                     f"{lo:+.3f} to {hi:+.3f} ring precision at equal review "
+                     f"capacity ({n_lo:,}-{n_hi:,} accounts) |")
+
+    rp = artefact("replay.json")
+    if rp:
+        s_ = rp["summary"]
+        d = s_["days_to_detection"]
+        L.append(f"| Time to detection, replaying night by night | median "
+                 f"{d['median']:.0f} of {rp['window']['days']} nights; "
+                 f"{s_['share_of_ring_spend_still_ahead_at_detection']:.1%} of a "
+                 f"ring's spend still ahead of it when it is found |")
+
+    rs = artefact("ring_scorer.json")
+    if rs and rs.get("trained"):
+        at = {k: v["all_labelled"]["200"]["precision"]
+              for k, v in rs["rankings"].items()}
+        L.append(f"| Ranking rings by confidence | the mean member score wins "
+                 f"at 200 rings ({at['mean_member_score']}) — a trained ring "
+                 f"model gets {at['learned_confidence']}, density "
+                 f"{at['density']} |")
+
+    rc = artefact("ring_context.json")
+    if rc:
+        best = max((v for k, v in rc["results"].items() if "delta_auprc" in v),
+                   key=lambda v: v["delta_auprc"])
+        cov = rc["coverage"]["in_previous_ring"]["heldout_share"]
+        lat = rc.get("check_latency", {})
+        L.append(f"| Yesterday's rings as a feature | {best['delta_auprc']:+.4f} "
+                 f"AUPRC — it reaches {cov:.2%} of held-out accounts. "
+                 f"`/check` answers in {lat.get('p50_ms')} ms at the median |")
+
+    tw = artefact("twins.json")
+    if tw:
+        f3 = tw["fragmentation"]["cells_of_3"]
+        f20 = tw["fragmentation"]["cells_of_20"]
+        d3 = f3["with_twins"]["ring_precision"] - f3["without_twins"]["ring_precision"]
+        d20 = f20["with_twins"]["ring_precision"] - f20["without_twins"]["ring_precision"]
+        L.append(f"| Behaviour edges against fragmentation | {d3:+.4f} ring "
+                 f"precision when the ring is split into threes, {d20:+.4f} "
+                 f"when it is split into twenties |")
+
+    ie = artefact("ieee_cis.json")
+    if ie:
+        r = ie["rings"]
+        L.append(f"| The same method on a payment processor's graph | "
+                 f"{r['ring_precision']} precision, {r['precision_lift_over_base']}× "
+                 f"its base rate, at {r['normal_flagged_per_fraud_caught']} good "
+                 f"cards per fraudulent one caught |")
+
     L += ["", end]
 
     head, rest = text.split(start, 1)
