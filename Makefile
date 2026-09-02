@@ -46,8 +46,9 @@ rings:  ## extract rings across the tau/lambda grid and measure them
 hostel:  ## check the pipeline against legitimate co-located groups
 	$(PY) -u -m orbweaver.rings.hostel_test
 
-report:  ## regenerate docs/results.md and every figure
+report:  ## regenerate docs/results.md, the figures and the case-file page
 	$(PY) -u -m eval.report
+	$(PY) -u -m eval.case_report
 
 test:  ## schema, temporal-split and planted-ring tests
 	$(PY) -m pytest tests/ -q

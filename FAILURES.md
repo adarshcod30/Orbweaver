@@ -215,6 +215,71 @@ same bug with 60 % of the signal intact would have shipped.
 
 ---
 
+## 2 September — the densest groups were the innocent ones
+
+**What broke:** the whole premise, briefly. With the extractor fixed and
+producing sensible 41-to-466-account rings, I measured ring precision for the
+first time: **0.051**, against a base rate of **0.224**. The rings were *four
+times worse than picking accounts at random*. Every operating point in the
+first λ sweep came out between 0.12 and 0.19 — all of them below base rate.
+
+**What I believed:** that dense means fraudulent. The entire pipeline is built
+on finding dense subgraphs, and I had taken it as given that a tightly
+connected group of accounts sharing rare entities is a ring. The planted-ring
+tests passed, the peeling was correct, the evidence extraction worked. The
+algorithm was doing exactly what I designed it to do, and what it found was
+mostly innocent people.
+
+**What it actually is.** Two measurements, both of which I should have taken
+before writing the extractor rather than after:
+
+*Fraud is assortative, but only mildly.* Fraud–fraud edges are 7.67% of
+labelled-to-labelled edges against 3.19% expected by chance — a 2.4× lift.
+Real, and not nearly enough on its own. Fraudsters also have *lower* mean
+degree than normal accounts (22.05 against 24.10), so the densest thing in the
+graph is systematically not the most fraudulent thing.
+
+*The relation that dominates the graph is the least informative one.*
+Per-relation fraud lift: location 3.68×, coupon 2.75×, stimulation 2.55×,
+delivery 2.46×, **promotion 1.76×**. Promotion edges are **70% of the whole
+graph**. So the densest structures are promotion cliques — hundreds of
+ordinary customers who used the same offer — and my rarity weight had no way
+to know that, because it only measures *how many people share a thing*, never
+*what kind of thing it is*.
+
+**How I got out,** in two steps, of which the second matters far more.
+
+First, weight each relation by its measured lift, fitted on training accounts
+only. Location edges up, promotion edges down.
+
+Second, and this is the real fix: **filter to suspicious accounts before
+peeling at all.** Restrict the graph to accounts the scorer puts above a
+threshold, then look for dense structure inside that region. The effect is not
+subtle:
+
+    no cut-off      ring precision 0.070    0.31x base rate
+    tau = 0.3       ring precision 0.541    2.41x base rate
+    tau = 0.5       ring precision 0.710    3.17x base rate
+
+The score cut-off was in my design as a *speed* optimisation — a way to avoid
+peeling the whole graph. It turns out to be the thing that makes the output
+mean anything. Density finds cohesive groups; it cannot tell you which
+cohesive groups are criminal. The model answers that question, and the
+deterministic objective still decides who is in the ring — which is the
+property I actually cared about protecting.
+
+**What I take from it:** I had measured that my algorithm found the densest
+subgraph correctly, and mistaken that for evidence that it found rings. Those
+are different claims and only the first one has a proof. The approximation
+guarantee is about the *search*, not about whether the thing being searched
+for is the thing you want — and I spent a long time being reassured by a bound
+that was never going to tell me my objective was pointed slightly wrong.
+
+The unpruned row stays in the results table permanently. It is the honest
+baseline, and it is the reason the rest of the table is worth reading.
+
+---
+
 ## 2 September — the extractor found a ring with 31,555 members
 
 **What broke:** the first real run of the ring extractor on the week-2 graph.
