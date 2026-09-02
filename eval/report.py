@@ -318,6 +318,52 @@ def write_results(cfg, score: dict | None, ring: dict | None,
             a("")
         a(f"{c['rupees_at_stake_basis']}.\n")
 
+    gen = None
+    gp = proc / "generalisation.json"
+    if gp.exists():
+        gen = json.loads(gp.read_text())
+    if gen:
+        a("## Does any of this work on a graph that is not PPA?\n")
+        a("Every other number here comes from one dataset, from one platform, in "
+          "one country. So I ran the pipeline unchanged on two fraud graphs that "
+          "share the shape and nothing else — **Amazon** reviewers and "
+          "**YelpChi** reviews (Dou et al., CIKM 2020; two of GADBench's ten "
+          "datasets). Both are multi-relation graphs with node labels.\n")
+        a("| dataset | nodes | edges | anomaly rate | node AUPRC | vs random |")
+        a("|---|---:|---:|---:|---:|---:|")
+        for name, r in gen["datasets"].items():
+            nm = r["node_scoring_heldout"]
+            a(f"| {name} | {r['nodes']:,} | {r['edges']:,} | {r['anomaly_rate']} | "
+              f"{nm['auprc']} | {nm['auprc_lift_over_random']}× |")
+        a("")
+        a("**The central finding replicates on both, independently.** Without the "
+          "score cut-off, densest-subgraph extraction is worse than picking at "
+          "random; with it, ring precision is far above the base rate.\n")
+        a("| dataset | τ | ring precision | vs base | held-out members | held-out precision |")
+        a("|---|---:|---:|---:|---:|---:|")
+        for name, r in gen["datasets"].items():
+            for b in r["rings"].values():
+                if not b.get("n_rings"):
+                    continue
+                a(f"| {name} | {b['tau']} | {b['ring_precision']} | "
+                  f"{b['precision_lift_over_base']}× | {b['heldout_members']} | "
+                  f"{b['heldout_precision']} |")
+        a("")
+        a("On Amazon the unpruned extractor lands at 0.573× the base rate and on "
+          "YelpChi at **exactly zero** — twenty-five rings, 1,914 accounts, not "
+          "one of them fraudulent. Pruning first takes the same extractor to "
+          "14.3× and 6.9×. That is three datasets now, from three unrelated "
+          "platforms, all saying that dense is not the same as fraudulent.\n")
+        a("**These are easier problems than PPA, and the gap is instructive.** "
+          "Node scoring reaches AUPRC 0.76 and 0.86 here against 0.38 on PPA, "
+          "because both ship real node features — 25 and 32 dimensions of "
+          "reviewer behaviour — while PPA ships none at all and every feature "
+          "has to be engineered from the order stream. YelpChi's strongest "
+          "relation carries a fraud lift of **49.8×**; PPA's best is 3.7×. Much "
+          "of what makes PPA hard is the poverty of what it gives you, not the "
+          "method.\n")
+        a(f"{gen['note']}\n")
+
     views = None
     vp = proc / "view_comparison.json"
     if vp.exists():

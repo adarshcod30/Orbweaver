@@ -77,12 +77,24 @@ The findings I would lead with:
   held-out accounts, with no memorisation gap between held-out and
   training-pool accounts, which is what the account-disjoint split was built to
   detect.
+- **The first finding replicates on two unrelated datasets.** Run unchanged on
+  Amazon reviewers and YelpChi reviews, the unpruned extractor again lands
+  below the base rate — on YelpChi at *exactly zero*, 25 rings and 1,914
+  accounts without a single fraudster — while pruning first reaches 14.3× and
+  6.9×. Three datasets, three platforms, same conclusion.
 
 ## What these numbers do not prove
 
 - **PPA is Chinese food-delivery data.** The method is data-agnostic; the
   numbers are not Indian. The hostel test is the closest I can get to the
-  most India-specific failure mode, and real validation needs Indian data.
+  most India-specific failure mode, and real validation needs Indian data. The
+  Amazon and YelpChi runs show the method transfers, but those are US review
+  fraud, not Indian payments.
+- **The generalisation runs are a weaker test than the PPA one.** Amazon and
+  YelpChi ship no timestamps, so that split is account-disjoint but not forward
+  in time. They are also easier problems — both have real node features, which
+  PPA does not — so their much higher numbers say more about what those
+  datasets give you than about the method.
 - **The released dataset is not the one in the paper.** It is the test week
   only — 3,267,961 accounts and 10,012,449 edges, not 5.69M and 29M — and
   three of its eight relation types have no values at all in the order files.
@@ -156,7 +168,10 @@ merchant it serves, and is the only party that could test whether it helps.
 - Xu, Ma, Fang et al., *Efficient and Effective Algorithms for Generalized
   Densest Subgraph Discovery*, SIGMOD 2023
 - Tang et al., *GADBench*, NeurIPS 2023 — why gradient boosting is the sensible
-  first scorer
+  first scorer, and the source of the two generalisation datasets
+- Dou et al., *Enhancing Graph Neural Network-based Fraud Detectors against
+  Camouflaged Fraudsters* (CARE-GNN), CIKM 2020 — the Amazon and YelpChi
+  releases used for the generalisation check
 - Razorpay, [Thirdwatch](https://razorpay.com/blog/detect-fraud-using-ml-ai-thirdwatch/)
   — the per-order framing this is complementary to
 

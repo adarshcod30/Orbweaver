@@ -4,7 +4,8 @@
 PY := python3
 .DEFAULT_GOAL := help
 .PHONY: help setup download schema data graph windows weights features subsample \
-        windows-weighted score rings hostel views adversarial overlay report reproduce test clean
+        windows-weighted score rings hostel views adversarial overlay generalise \
+        download-gadbench report reproduce test clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -65,6 +66,12 @@ overlay:  ## simulated payment-instrument relation, sensitivity analysis
 views:  ## my 5-relation graph against the authors' 8-relation graph
 	$(PY) -u -m eval.compare_views
 
+download-gadbench:  ## Amazon and YelpChi from the CARE-GNN release (~44 MB)
+	./scripts/download_gadbench.sh
+
+generalise:  ## run the whole pipeline on Amazon and YelpChi
+	$(PY) -u -m eval.generalise
+
 sage:  ## optional GraphSAGE scorer, reported beside the default one
 	$(PY) -u -m orbweaver.scoring.sage
 
@@ -83,7 +90,7 @@ check:  ## tests plus the pre-push check on committed prose
 	./scripts/voice_check.sh
 
 # Every stage from the raw files to the numbers in the documentation.
-reproduce: data graph windows-weighted test score rings hostel views adversarial overlay report  ## everything, end to end
+reproduce: data graph windows-weighted test score rings hostel views adversarial overlay generalise report  ## everything, end to end
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

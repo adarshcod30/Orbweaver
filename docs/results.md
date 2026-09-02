@@ -91,6 +91,32 @@ Labels: 4 fraud, 0 normal, 3 unlabelled.
 
 144 promotion orders x an assumed Rs.100 per promotion (PPA ships no monetary amounts; this is an assumption).
 
+## Does any of this work on a graph that is not PPA?
+
+Every other number here comes from one dataset, from one platform, in one country. So I ran the pipeline unchanged on two fraud graphs that share the shape and nothing else — **Amazon** reviewers and **YelpChi** reviews (Dou et al., CIKM 2020; two of GADBench's ten datasets). Both are multi-relation graphs with node labels.
+
+| dataset | nodes | edges | anomaly rate | node AUPRC | vs random |
+|---|---:|---:|---:|---:|---:|
+| amazon | 11,944 | 4,417,576 | 0.0687 | 0.7629 | 11.112× |
+| yelpchi | 45,954 | 3,846,979 | 0.1453 | 0.8557 | 5.89× |
+
+**The central finding replicates on both, independently.** Without the score cut-off, densest-subgraph extraction is worse than picking at random; with it, ring precision is far above the base rate.
+
+| dataset | τ | ring precision | vs base | held-out members | held-out precision |
+|---|---:|---:|---:|---:|---:|
+| amazon | 0.0 | 0.0393 | 0.573× | 1634 | 0.0404 |
+| amazon | 0.3 | 0.9797 | 14.271× | 169 | 0.9349 |
+| amazon | 0.5 | 0.9822 | 14.307× | 169 | 0.9349 |
+| yelpchi | 0.0 | 0.0 | 0.0× | 479 | 0.0 |
+| yelpchi | 0.3 | 0.9918 | 6.827× | 63 | 0.9683 |
+| yelpchi | 0.5 | 0.9956 | 6.853× | 111 | 0.982 |
+
+On Amazon the unpruned extractor lands at 0.573× the base rate and on YelpChi at **exactly zero** — twenty-five rings, 1,914 accounts, not one of them fraudulent. Pruning first takes the same extractor to 14.3× and 6.9×. That is three datasets now, from three unrelated platforms, all saying that dense is not the same as fraudulent.
+
+**These are easier problems than PPA, and the gap is instructive.** Node scoring reaches AUPRC 0.76 and 0.86 here against 0.38 on PPA, because both ship real node features — 25 and 32 dimensions of reviewer behaviour — while PPA ships none at all and every feature has to be engineered from the order stream. YelpChi's strongest relation carries a fraud lift of **49.8×**; PPA's best is 3.7×. Much of what makes PPA hard is the poverty of what it gives you, not the method.
+
+Account-disjoint and stratified, but NOT forward in time: these files carry no timestamps. Rarity is approximated from endpoint degree because the entity ids are not recoverable from an adjacency.
+
 ## What the relations I cannot rebuild are worth
 
 Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:
