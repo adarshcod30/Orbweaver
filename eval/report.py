@@ -594,15 +594,24 @@ def write_results(cfg, score: dict | None, ring: dict | None,
         deltas = [r.get("delta_auprc", 0) for k, r in rc["results"].items()
                   if k != "score alone" and "auprc" in r]
         best = max(deltas) if deltas else 0.0
-        if best <= 0.001:
-            a("**This did not work, and the honest reading is that it barely "
-              "moves.** No combination of ring context with the account score "
-              "improves held-out AUPRC by more than a rounding error. The "
-              "context features are real and they are computed correctly — the "
-              "horizon test passes and the coverage numbers are in the JSON — "
-              "they simply carry almost nothing the account score does not "
-              "already have. That is worth stating plainly rather than "
-              "presenting a fitted variant that squeezes out a third decimal.\n")
+        if best <= 0.005:
+            cov = rc.get("coverage", {})
+            top = max((v["heldout_share"] for v in cov.values()), default=0.0)
+            a(f"**This did not work, and the ceiling was set before the model "
+              f"ever ran.** The best combination moves held-out AUPRC by "
+              f"{best:+.4f}, which is a rounding error. The reason is coverage: "
+              f"the most widespread context feature touches **{top:.2%} of "
+              "held-out accounts**, and only 0.15% of them were in a "
+              "previous-window ring at all. A feature that is zero for more "
+              "than ninety-nine accounts in a hundred cannot move an aggregate "
+              "metric, whatever it says about the hundredth.\n")
+            a("This is the same fact the nightly replay found, seen from "
+              "another angle. Rings do not persist from one night to the next, "
+              "and they do not transfer from one window to the next either. "
+              "They are window-specific objects: the accounts recur, the "
+              "groupings do not. So ring membership is a poor thing to carry "
+              "forward as a feature, and I would rather say that than report a "
+              "fitted blend that squeezes out a third decimal place.\n")
         else:
             a(f"The best combination adds **{best:+.4f} AUPRC** on held-out "
               "accounts. The first two arms have nothing fitted in them at all, "

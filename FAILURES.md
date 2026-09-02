@@ -307,6 +307,50 @@ in the numbers can never again be two different objects.
 
 ---
 
+## 3 September — a feature that is zero for 99% of accounts cannot help
+
+**What broke:** I fed ring context back into the per-account score — was this
+account in a ring last window, how confident was that ring, how many of its
+neighbours were — expecting the graph view to give something back to the
+per-account view. The best of eight combinations moves held-out AUPRC by
+**+0.0011**. That is nothing.
+
+**What I believed:** that ring membership is a strong signal about an account,
+so carrying it forward as a feature should help the next window's scoring.
+The signal is strong. That was never the problem.
+
+**What it actually is: coverage.** Of 76,404 held-out accounts, **116 were in a
+previous-window ring — 0.15%**. The most widespread of the four context
+features, having a neighbour who was in one, reaches 581 accounts, 0.76%. A
+feature that is zero for more than ninety-nine accounts in a hundred cannot
+move an aggregate metric no matter how informative it is on the hundredth, and
+I should have computed that number before building the feature rather than
+after.
+
+**The deeper reason, which connects to the replay.** Rings do not persist from
+one night to the next — that is measured, with a best overlap of 0.359 against
+the 0.5 needed to call it the same group — and it turns out they do not
+transfer from one window to the next either. Rings are window-specific objects.
+The accounts recur; the groupings are recomputed. So ring membership is a poor
+thing to carry forward, and two separate experiments have now told me the same
+thing from different directions.
+
+**What did work.** `GET /check/{account}` answers in **0.01 ms at the median
+and 0.059 ms at the 95th percentile**, worst case 0.308 ms over a thousand
+random accounts. Every index is built once at start-up, so a lookup is array
+indexing rather than a file read. That matters because the claim this project
+makes is that a per-transaction system could consume the ring view — and a
+claim like that is worth nothing if the answer takes a second to produce. It
+takes ten microseconds.
+
+**What I take from it:** the ceiling on a feature is how many rows it is
+non-zero for, and that is a one-line calculation available before any of the
+work. I built four features, wired two combination rules and a fitted blend,
+and every one of them was bounded at three decimal places by a number I could
+have had in a minute.
+
+---
+
 ## 3 September — the model I built lost to the baseline I almost did not run
 
 **What broke:** I built a ring-level model to rank the review queue by learned

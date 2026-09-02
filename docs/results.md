@@ -130,6 +130,44 @@ On Amazon the unpruned extractor lands at 0.573× the base rate and on YelpChi a
 
 Account-disjoint and stratified, but NOT forward in time: these files carry no timestamps. Rarity is approximated from endpoint degree because the entity ids are not recoverable from an adjacency.
 
+## Feeding the web back into the strand
+
+The argument this project makes is that a ring is invisible to a system scoring one transaction at a time. The fair follow-up is whether the ring view can give anything *back* to the per-account view — because if it can, a per-transaction system does not have to be replaced to benefit from any of this. It can consume a few extra columns.
+
+Context comes from rings found on days [365018, 365021] and is joined to features from days [365022, 365025], so every context day strictly precedes every feature day. That is checked against the window manifests rather than assumed from the naming, because this is the easiest place in the whole pipeline to let the future inform the past. **1,293 accounts** were in a previous-window ring.
+
+| how the score and the context are combined | held-out AUPRC | change |
+|---|---:|---:|
+| score alone | 0.3796 | — |
+| score_times_context [in_previous_ring] | 0.3807 | +0.0011 |
+| score_then_context [in_previous_ring] | 0.3799 | +0.0003 |
+| score_times_context [previous_ring_confidence] | 0.3806 | +0.001 |
+| score_then_context [previous_ring_confidence] | 0.38 | +0.0004 |
+| score_times_context [neighbours_in_previous_rings] | 0.3803 | +0.0007 |
+| score_then_context [neighbours_in_previous_rings] | 0.3801 | +0.0005 |
+| score_times_context [rare_entity_overlap_with_previous_rings] | 0.3803 | +0.0007 |
+| score_then_context [rare_entity_overlap_with_previous_rings] | 0.38 | +0.0004 |
+| fitted blend | 0.3803 | +0.0007 |
+
+**This did not work, and the ceiling was set before the model ever ran.** The best combination moves held-out AUPRC by +0.0011, which is a rounding error. The reason is coverage: the most widespread context feature touches **0.76% of held-out accounts**, and only 0.15% of them were in a previous-window ring at all. A feature that is zero for more than ninety-nine accounts in a hundred cannot move an aggregate metric, whatever it says about the hundredth.
+
+This is the same fact the nightly replay found, seen from another angle. Rings do not persist from one night to the next, and they do not transfer from one window to the next either. They are window-specific objects: the accounts recur, the groupings do not. So ring membership is a poor thing to carry forward as a feature, and I would rather say that than report a fitted blend that squeezes out a third decimal place.
+
+How much of the held-out set each context feature actually touches, which is the ceiling on how much any of them could matter:
+
+| context feature | held-out accounts with a non-zero value | share |
+|---|---:|---:|
+| `in_previous_ring` | 116 | 0.15% |
+| `previous_ring_confidence` | 116 | 0.15% |
+| `neighbours_in_previous_rings` | 581 | 0.76% |
+| `rare_entity_overlap_with_previous_rings` | 184 | 0.24% |
+
+### Asking about one account
+
+A per-transaction system would not run a batch job; it has one account in front of it and needs an answer inside a request. `GET /check/{account}` returns the score, ring membership and its evidence, how many neighbours are in rings, and the rupee assumption that travels with every figure. Indexes are built once at start-up, so a lookup is array indexing rather than a file read.
+
+Measured over 1,000 random accounts: **p50 0.01 ms, p95 0.059 ms**, worst 0.308 ms. `scripts/check_demo.sh` asks about an account inside a ring and one outside it.
+
 ## Ranking rings by a learned confidence
 
 The queue is ordered by density, which is the crudest thing it could be. Density says how tightly a group is connected; it does not say how likely the group is to be fraudulent, and the whole reason the score cut-off exists is that those are different questions. So this learns a ring-level model and compares it against density and against the obvious baseline anyone would reach for first, the mean score of a ring's members.
