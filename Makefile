@@ -69,6 +69,10 @@ report:  ## regenerate docs/results.md, the figures and the case-file page
 test:  ## schema, temporal-split and planted-ring tests
 	$(PY) -m pytest tests/ -q
 
+check:  ## tests plus the pre-push check on committed prose
+	$(PY) -m pytest tests/ -q
+	./scripts/voice_check.sh
+
 # The full path from raw files to the numbers in the documentation.
 # `weights` is fitted before `windows` because the graph applies it.
 reproduce: data graph windows-weighted test score rings hostel views adversarial overlay report  ## everything, end to end
