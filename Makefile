@@ -59,6 +59,9 @@ views:  ## my 5-relation graph against the authors' 8-relation graph
 sage:  ## optional GraphSAGE scorer, reported beside the default one
 	$(PY) -u -m orbweaver.scoring.sage
 
+console:  ## review queue at http://127.0.0.1:8000 (needs fastapi, uvicorn)
+	$(PY) -m orbweaver.console.app
+
 report:  ## regenerate docs/results.md, the figures and the case-file page
 	$(PY) -u -m eval.report
 	$(PY) -u -m eval.case_report

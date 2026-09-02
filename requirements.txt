@@ -13,6 +13,6 @@ pydantic==2.11.3
 PyYAML==6.0.3
 pytest==8.4.1
 
-# Optional: only needed for `make sage`, the alternative GNN scorer.
-# torch>=2.0
-# torch_geometric>=2.8
+# Optional extras, not needed for `make reproduce`:
+#   make sage     -> torch>=2.0, torch_geometric>=2.8
+#   make console  -> fastapi>=0.115, uvicorn>=0.34
