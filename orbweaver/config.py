@@ -76,6 +76,9 @@ class RingsCfg(BaseModel):
 class CostCfg(BaseModel):
     assumed_avg_promo_value_inr: float
     assumed_avg_order_value_inr: float
+    assumed_reviewer_cost_per_minute_inr: float = 10.0
+    review_minutes_fixed: float = 3.0
+    review_minutes_per_member: float = 0.25
 
 
 class Config(BaseModel):

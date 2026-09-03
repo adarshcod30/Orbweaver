@@ -273,10 +273,10 @@ Identity from one night to the next follows Greene, Doyle and Cunningham (ASONAM
 
 | night | reference set | anchors | rings found | after de-duplication | median ring size | precision, top 25 | real customers per catch | extract (s) |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 52,699 | 500 | 498 | 146 | 34 | 0.3035 | 2.295 | 0.5 |
-| 2 | 62,982 | 1,794 | 1,608 | 246 | 14 | 0.5506 | 0.816 | 1.6 |
-| 3 | 65,858 | 1,827 | 1,454 | 288 | 6 | 0.4839 | 1.067 | 1.3 |
-| 4 | 78,089 | 1,974 | 1,534 | 334 | 6 | 0.7167 | 0.395 | 3.4 |
+| 1 | 52,699 | 500 | 498 | 146 | 34 | 0.3035 | 2.295 | 1.2 |
+| 2 | 62,982 | 1,794 | 1,608 | 246 | 14 | 0.5506 | 0.816 | 3.4 |
+| 3 | 65,858 | 1,827 | 1,454 | 288 | 6 | 0.4839 | 1.067 | 2.9 |
+| 4 | 78,089 | 1,974 | 1,534 | 334 | 6 | 0.7167 | 0.395 | 2.9 |
 
 **Does it survive the night?** The anchored tracker only ever matches a ring against *last night*, because a front is one night old. Comparing that against global peeling's best overlap with **any** earlier night would be an easier test for global than for anchored, so the like-for-like column restricts global to the same single night; the looser number is kept beside it so the comparison cannot be accused of being rigged.
 
@@ -316,10 +316,80 @@ Anchored is **+0.0125 worse** on precision. That is the expected direction and t
 | anchors | rings found | after de-duplication | precision, top 25 | real customers per catch | seconds |
 |---:|---:|---:|---:|---:|---:|
 | 200 | 80 | 61 | 0.6981 | 0.432 | 0.1 |
-| 500 | 206 | 133 | 0.8875 | 0.127 | 0.3 |
+| 500 | 206 | 133 | 0.8875 | 0.127 | 0.4 |
 | 1,000 | 412 | 244 | 0.7215 | 0.386 | 0.7 |
 
-**On demand.** `GET /check/{account}` now computes the ring around the account live from its ball, when the account is inside R, and returns it with its case id and first-seen night. Over 1,000 anchors: **p50 0.063 ms, p95 1.256 ms**, worst 6.234 ms. A full night's extraction over every anchor takes 3.4 s on top of building the night's graph.
+**On demand.** `GET /check/{account}` now computes the ring around the account live from its ball, when the account is inside R, and returns it with its case id and first-seen night. Over 1,000 anchors: **p50 0.063 ms, p95 1.21 ms**, worst 3.283 ms. A full night's extraction over every anchor takes 2.9 s on top of building the night's graph.
+
+## What to do with the queue, given a budget
+
+Every result above says which groups look worst. None of them says what to do on a night when one analyst has an hour, and none of them prices the cost of holding a promotion for a group that turns out to be a hostel. Detection and investigation are different constraints and the second is usually the binding one, so this turns the queue into a decision.
+
+There are three things a team can do with a ring. **Review** it, which costs analyst minutes and - assuming they then act correctly - stops the fraud in it without touching anyone legitimate. **Auto-hold** the members' promotions, which costs no analyst time, stops the fraud, and harms every legitimate member by some fraction of their value. Or **ignore** it. The review set is chosen by exact 0/1 knapsack against the night's budget, and any ring not reviewed is auto-held when holding beats ignoring. Because reviewing is never worse than holding, what an item carries into the knapsack is the *gain from reviewing over the best thing you could do without an analyst* - otherwise the optimiser would spend minutes on rings that auto-holding already handles.
+
+The framing is example-dependent cost-sensitive learning: a false positive costs an administrative amount, a false negative costs the amount at stake, and the number that matters is savings against doing nothing (Bahnsen, Aouada and Ottersten, ESWA 2016; Elkan, IJCAI 2001).
+
+**Every rupee below is an assumption.** PPA ships no monetary amounts at all, so these are stated constants:
+
+| assumption | value |
+|---|---:|
+| a promotion is worth | ₹100 |
+| a customer is worth, per week-1 order | ₹400 |
+| an analyst's minute costs | ₹10 |
+| reviewing a ring takes | 3.0 + 0.25 per member minutes |
+| a wrongly held customer loses | 10% of their value |
+
+They rank policies against each other and mean nothing in absolute terms. A ring's probability of being fraudulent is the mean of its members' calibrated scores. Member scores are calibrated; their mean is not a calibrated ring-level probability, so this is a ranking signal used as a probability.
+
+**The final night**, queue of 200 rings ordered by mean member score, of which ₹68,100 sits on accounts labelled fraud. A perfect reviewer is assumed here; the 90% variant is below.
+
+| budget | policy | reviewed | auto-held | minutes | fraud ₹ stopped | legitimate ₹ harmed | savings |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 30 | capacity-aware | 4 | 176 | 30 | ₹67,900 | ₹15,840 | 0.7601 |
+| 30 | density order until the budget is spent | 2 | 0 | 29 | ₹0 | ₹0 | -0.0043 |
+| 30 | auto-hold everything | 0 | 200 | 0 | ₹68,100 | ₹17,280 | 0.7463 |
+| 30 | do nothing | 0 | 0 | 0 | ₹0 | ₹0 | 0.0 |
+| 60 | capacity-aware | 7 | 173 | 60 | ₹67,900 | ₹16,040 | 0.7527 |
+| 60 | density order until the budget is spent | 5 | 0 | 60 | ₹200 | ₹0 | -0.0059 |
+| 60 | auto-hold everything | 0 | 200 | 0 | ₹68,100 | ₹17,280 | 0.7463 |
+| 60 | do nothing | 0 | 0 | 0 | ₹0 | ₹0 | 0.0 |
+| 120 | capacity-aware | 16 | 165 | 120 | ₹67,900 | ₹13,320 | 0.7838 |
+| 120 | density order until the budget is spent | 13 | 0 | 117 | ₹9,800 | ₹0 | 0.1267 |
+| 120 | auto-hold everything | 0 | 200 | 0 | ₹68,100 | ₹17,280 | 0.7463 |
+| 120 | do nothing | 0 | 0 | 0 | ₹0 | ₹0 | 0.0 |
+| 240 | capacity-aware | 36 | 146 | 240 | ₹67,900 | ₹9,680 | 0.8197 |
+| 240 | density order until the budget is spent | 33 | 0 | 238 | ₹18,200 | ₹0 | 0.2323 |
+| 240 | auto-hold everything | 0 | 200 | 0 | ₹68,100 | ₹17,280 | 0.7463 |
+| 240 | do nothing | 0 | 0 | 0 | ₹0 | ₹0 | 0.0 |
+
+**The analyst budget barely changes how much fraud is stopped.** From 30 minutes to 240, fraud value stopped moves from ₹67,900 to ₹67,900 - under 0.0% - while legitimate value harmed falls from ₹15,840 to ₹9,680, a drop of 39%. Auto-holding already stops almost everything; what analyst time buys is not catching more, it is releasing the groups that should never have been held. On these assumptions the reviewer is a false-positive control rather than a detector, which is not what I expected to find and is the most useful thing in this section.
+
+**Working the queue in density order loses money** at 30, 60 minutes: it spends the analyst's time and stops ₹0 at 30 minutes. Density ranks how tightly a group is tied together, which is not the same as how much is at stake in it, so a queue sorted that way puts small dense rings ahead of large expensive ones. That is the same lesson as the ring-ranking result above, arriving from the cost side.
+
+At 30 minutes the capacity-aware policy stops ₹67,900 against ₹0 for working down the queue in density order, and at 240 minutes ₹67,900 against ₹18,200. Auto-holding everything stops the most fraud of any policy and needs no analyst at all - it also harms ₹17,280 of legitimate value doing it, which is the whole reason the review budget exists.
+
+**A reviewer who is right nine times in ten**, at 60 minutes: ₹67,660 stopped against ₹67,900 for a perfect one, and ₹16,164 of legitimate value harmed against nothing. The perfect-reviewer number is an upper bound and is labelled as one everywhere it appears.
+
+**How much churn matters.** Churn is what a wrongly held customer costs. It should change which rings are worth auto-holding and never which are worth an analyst's time, and that is what it does:
+
+| churn | rings reviewed at 60 min | rings auto-held | fraud ₹ stopped | legitimate ₹ harmed |
+|---:|---:|---:|---:|---:|
+| 5% | 8 | 178 | ₹68,100 | ₹7,640 |
+| 10% | 7 | 173 | ₹67,900 | ₹16,040 |
+| 25% | 7 | 168 | ₹67,900 | ₹38,000 |
+
+**One analyst, two hours a night**, working the nightly queues as they arrived - the case ids come from the anchored extraction, so a ring reviewed on one night is the same case if it returns on the next:
+
+| night | queue | cases reviewed | auto-held | minutes | fraud ₹ stopped | running total |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 146 | 7 | 56 | 120 | ₹28,000 | ₹28,000 |
+| 2 | 200 | 11 | 150 | 120 | ₹63,600 | ₹91,600 |
+| 3 | 200 | 18 | 164 | 120 | ₹53,500 | ₹145,100 |
+| 4 | 200 | 16 | 165 | 120 | ₹67,900 | ₹213,000 |
+
+By the last night that is ₹213,000 of promotion value stopped for ₹71,840 of legitimate value harmed, on the assumptions above.
+
+Each case card now carries its recommended action and the two numbers behind it: what reviewing it is expected to be worth, and what auto-holding it is expected to be worth. A reviewer who disagrees can see exactly which of the two the recommendation turned on.
 
 ## What the relations I cannot rebuild are worth
 
@@ -498,5 +568,7 @@ The separator is the **account score**, not the structure — the touched cluste
 ![ring_context](figures/ring_context.png)
 
 ![ring_persistence](figures/ring_persistence.png)
+
+![policy_frontier](figures/policy_frontier.png)
 
 ![adversarial](figures/adversarial.png)

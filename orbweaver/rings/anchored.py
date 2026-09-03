@@ -57,6 +57,7 @@ DEDUPE_JACCARD = 0.5             # two anchors that found the same ring
 THETA_GREENE = 0.3               # Greene et al. 2010 used 0.3
 THETA_STRICT = 0.5               # the replay's original, stricter bar
 LATENCY_SAMPLE = 1000            # anchors timed for the on-demand figure
+POLICY_QUEUE_DEPTH = 200         # nightly queue kept for the review policy
 
 
 def jaccard(a: np.ndarray, b: np.ndarray) -> float:
@@ -490,6 +491,18 @@ def run(cfg: Config | None = None) -> dict:
                         "per_anchor_median_ms": round(1000 * float(np.median(per_anchor)), 2) if per_anchor else None,
                         "per_anchor_p95_ms": round(1000 * float(np.percentile(per_anchor, 95)), 2) if per_anchor else None},
         }
+        # The review policy runs night by night over these same queues. Keeping
+        # them here costs a few hundred kilobytes and saves rebuilding every
+        # night's graph a second time to get them back.
+        queue = sorted(rings, key=lambda r: (-float(np.mean(scores[r.members])), r.anchor))[:POLICY_QUEUE_DEPTH]
+        ev = {id(r): a for r, a in zip(rings, assigned[THETA_GREENE])}
+        row["queue"] = [{
+            "anchor": r.anchor, "size": r.size, "density": round(r.density, 4),
+            "mean_member_score": round(float(np.mean(scores[r.members])), 6),
+            "case_id": ev[id(r)]["case_id"], "event": ev[id(r)]["event"],
+            "first_seen_night": ev[id(r)]["born"],
+            "members": r.members.tolist(),
+        } for r in queue]
         nights.append(row)
         print(f"{i:>6} {row['reference_set']:>8,} {n_edges_ref:>10,} {anchors.size:>8,} "
               f"{len(found):>6} {len(rings):>6} {str(m['ring_precision']):>8} "

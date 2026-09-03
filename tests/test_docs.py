@@ -69,6 +69,7 @@ ARTEFACT_SECTIONS = {
     "twins.json": "## Edges an attacker cannot cut",
     "ieee_cis.json": "## A payment processor's graph",
     "anchored.json": "## A ring you can find again tomorrow",
+    "policy.json": "## What to do with the queue, given a budget",
 }
 
 
@@ -107,6 +108,7 @@ ARTEFACT_FIGURES = {
     "twins.json": "adversarial.png",
     "ieee_cis.json": "ieee_relation_lift.png",
     "anchored.json": "ring_persistence.png",
+    "policy.json": "policy_frontier.png",
 }
 
 

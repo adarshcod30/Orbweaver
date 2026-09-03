@@ -1011,3 +1011,50 @@ earlier for a different purpose. Reusing a metric across an experiment boundary
 is where this keeps entering. I now write down what each side is allowed to see
 before I compare them, and if the two sentences are not identical the comparison
 is not ready.
+
+---
+
+## 3 September — I built a review queue for a reviewer who turns out not to be the bottleneck
+
+**What broke:** my assumption about what the analyst is *for*. The whole point
+of the capacity-aware policy was to spend a limited number of analyst minutes
+on the rings where they buy the most fraud stopped. I expected a curve: more
+minutes, more fraud caught, with diminishing returns somewhere.
+
+The curve is flat. From thirty minutes a night to two hundred and forty, fraud
+value stopped does not move at all — ₹67,900 either way. What changes is the
+collateral: legitimate value harmed falls from ₹15,840 to ₹9,680, a 39% drop.
+
+**What I believed:** that reviewing is how fraud gets stopped, and that the
+budget therefore controls how much of it you catch.
+
+**Why that was wrong:** auto-holding a ring stops its fraud too, and it costs no
+analyst time at all. Under these assumptions almost every ring above the score
+cut-off is worth holding, so the fraud is stopped whether or not anyone looks at
+it. What a human adds is the ability to *release* the groups that should never
+have been held — the hostel, the shared office, the joint family. The analyst is
+a false-positive control, not a detector.
+
+That reframes the queue. Ordering it by how bad a ring looks is ordering it by
+how likely holding it is to be right, when the useful ordering is how likely
+holding it is to be *wrong and expensive*. I have not rebuilt the queue around
+that, because the policy already picks the review set by expected value and
+arrives at the same place from the other direction — but the ranking I ship
+above the policy is still the old one, and I would change it if I were carrying
+this further.
+
+**A second thing fell out of the same table.** Working the queue in density
+order — which is what the console does by default — has a *negative* net at
+thirty and sixty minutes. It spends the analyst's time and stops ₹0. Density
+says how tightly a group is tied together; it says nothing about how much is at
+stake in it, so a density-ordered queue puts small tight rings ahead of large
+expensive ones. That is the same finding as the ring-ranking work, which had the
+mean member score beating density, arriving here from the cost side instead of
+the precision side. Two independent measurements now say the default ordering is
+the wrong one.
+
+**What I take from it:** I specified this policy as an optimiser over a budget
+before checking whether the budget was the binding constraint. It was not. The
+measurement was still worth making — it produced the most useful sentence in the
+section — but I got there by building the whole thing and reading the output,
+not by thinking about it first.

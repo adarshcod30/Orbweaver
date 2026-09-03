@@ -663,6 +663,203 @@ def _anchored_section(a, proc: Path) -> None:
       f"top of building the night's graph.\n")
 
 
+def policy_frontier_chart(po: dict, out: Path) -> Path | None:
+    """Left: what each policy stops against what it harms, as the budget grows.
+    Right: the running total a single analyst working two hours a night would
+    have stopped, by night.
+    """
+    budgets = po.get("final_night", {}).get("budgets") or {}
+    if not budgets:
+        return None
+    order = sorted(budgets, key=lambda b: int(b))
+    styles = {
+        "capacity-aware": (ACCENT, "o", "capacity-aware"),
+        "density order until the budget is spent": (INK, "s", "density order"),
+        "auto-hold everything": (MUTED, "^", "auto-hold everything"),
+    }
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.2), dpi=160)
+
+    ax = axes[0]
+    _style(ax)
+    for name, (colour, marker, label) in styles.items():
+        xs = [budgets[b][name]["legitimate_value_harmed_inr"] for b in order]
+        ys = [budgets[b][name]["fraud_value_stopped_inr"] for b in order]
+        ax.plot(xs, ys, marker=marker, color=colour, linewidth=1.4, markersize=5, label=label)
+    nothing = budgets[order[0]]["do nothing"]
+    ax.scatter([nothing["legitimate_value_harmed_inr"]], [nothing["fraud_value_stopped_inr"]],
+               color=MUTED, marker="x", s=60, label="do nothing")
+    for b in order:
+        o = budgets[b]["capacity-aware"]
+        ax.annotate(f"{b}m", xy=(o["legitimate_value_harmed_inr"], o["fraud_value_stopped_inr"]),
+                    xytext=(4, -9), textcoords="offset points", fontsize=8, color=ACCENT)
+    ax.set_xlabel("legitimate value harmed (₹, assumed)", fontsize=10, color=INK)
+    ax.set_ylabel("fraud value stopped (₹, assumed)", fontsize=10, color=INK)
+    ax.set_title("What each policy stops, and what it costs", color=INK, fontsize=12,
+                 loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=8, loc="lower right")
+
+    ax = axes[1]
+    _style(ax)
+    rows = [r for r in po.get("night_by_night_at_120_minutes", []) if r.get("rings_in_queue")]
+    if rows:
+        x = [r["night"] for r in rows]
+        ax.bar(x, [r["fraud_value_stopped_inr"] for r in rows], color=ACCENT, width=0.55,
+               label="stopped that night")
+        ax.plot(x, [r["cumulative_fraud_value_stopped_inr"] for r in rows], color=INK,
+                marker="o", linewidth=1.4, markersize=5, label="running total")
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"night {n}" for n in x])
+        ax.set_ylabel("fraud value stopped (₹, assumed)", fontsize=10, color=INK)
+        ax.set_title("One analyst, two hours a night", color=INK, fontsize=12, loc="left", pad=10)
+        ax.legend(frameon=False, fontsize=8, loc="upper left")
+
+    fig.tight_layout()
+    dest = out / "policy_frontier.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
+def _policy_section(a, proc: Path) -> None:
+    f = proc / "policy.json"
+    if not f.exists():
+        return
+    po = json.loads(f.read_text())
+    asm = po["assumptions"]
+    budgets = po["final_night"]["budgets"]
+    order = sorted(budgets, key=lambda b: int(b))
+
+    a("## What to do with the queue, given a budget\n")
+    a("Every result above says which groups look worst. None of them says what to do on a night "
+      "when one analyst has an hour, and none of them prices the cost of holding a promotion for "
+      "a group that turns out to be a hostel. Detection and investigation are different "
+      "constraints and the second is usually the binding one, so this turns the queue into a "
+      "decision.\n")
+    a("There are three things a team can do with a ring. **Review** it, which costs analyst "
+      "minutes and - assuming they then act correctly - stops the fraud in it without touching "
+      "anyone legitimate. **Auto-hold** the members' promotions, which costs no analyst time, "
+      "stops the fraud, and harms every legitimate member by some fraction of their value. Or "
+      "**ignore** it. The review set is chosen by exact 0/1 knapsack against the night's budget, "
+      "and any ring not reviewed is auto-held when holding beats ignoring. Because reviewing is "
+      "never worse than holding, what an item carries into the knapsack is the *gain from "
+      "reviewing over the best thing you could do without an analyst* - otherwise the optimiser "
+      "would spend minutes on rings that auto-holding already handles.\n")
+    a("The framing is example-dependent cost-sensitive learning: a false positive costs an "
+      "administrative amount, a false negative costs the amount at stake, and the number that "
+      "matters is savings against doing nothing (Bahnsen, Aouada and Ottersten, ESWA 2016; "
+      "Elkan, IJCAI 2001).\n")
+
+    a("**Every rupee below is an assumption.** PPA ships no monetary amounts at all, so these are "
+      "stated constants:\n")
+    a("| assumption | value |")
+    a("|---|---:|")
+    a(f"| a promotion is worth | ₹{asm['promotion_value_inr']:.0f} |")
+    a(f"| a customer is worth, per week-1 order | ₹{asm['customer_value_per_week1_order_inr']:.0f} |")
+    a(f"| an analyst's minute costs | ₹{asm['analyst_cost_per_minute_inr']:.0f} |")
+    a(f"| reviewing a ring takes | {asm['review_minutes']} minutes |")
+    a(f"| a wrongly held customer loses | {asm['churn_headline']:.0%} of their value |")
+    a("")
+    a("They rank policies against each other and mean nothing in absolute terms. "
+      f"{asm['probability_caveat']}\n")
+
+    a(f"**The final night**, queue of {po['final_night']['rings_in_queue']} rings ordered by mean "
+      "member score, of which "
+      f"₹{po['final_night']['total_fraud_value_inr']:,.0f} sits on accounts labelled fraud. "
+      "A perfect reviewer is assumed here; the 90% variant is below.\n")
+    a("| budget | policy | reviewed | auto-held | minutes | fraud ₹ stopped | legitimate ₹ harmed | savings |")
+    a("|---:|---|---:|---:|---:|---:|---:|---:|")
+    for b in order:
+        for name, o in budgets[b].items():
+            a(f"| {b} | {name} | {o['rings_reviewed']} | {o['rings_auto_held']} | "
+              f"{o['minutes_used']:.0f} | ₹{o['fraud_value_stopped_inr']:,.0f} | "
+              f"₹{o['legitimate_value_harmed_inr']:,.0f} | {o['savings']} |")
+    a("")
+
+    # The interesting thing in that table is what does *not* move with the
+    # budget, so the section says it rather than leaving it to be noticed.
+    ca = [budgets[b]["capacity-aware"] for b in order]
+    stopped = [o["fraud_value_stopped_inr"] for o in ca]
+    harmed = [o["legitimate_value_harmed_inr"] for o in ca]
+    spread = (max(stopped) - min(stopped)) / max(max(stopped), 1)
+    if spread < 0.02:
+        a(f"**The analyst budget barely changes how much fraud is stopped.** From {order[0]} "
+          f"minutes to {order[-1]}, fraud value stopped moves from ₹{stopped[0]:,.0f} to "
+          f"₹{stopped[-1]:,.0f} - under {spread:.1%} - while legitimate value harmed falls from "
+          f"₹{harmed[0]:,.0f} to ₹{harmed[-1]:,.0f}, a drop of "
+          f"{(harmed[0] - harmed[-1]) / max(harmed[0], 1):.0%}. Auto-holding already stops "
+          "almost everything; what analyst time buys is not catching more, it is releasing the "
+          "groups that should never have been held. On these assumptions the reviewer is a "
+          "false-positive control rather than a detector, which is not what I expected to find "
+          "and is the most useful thing in this section.\n")
+
+    dens = [budgets[b]["density order until the budget is spent"] for b in order]
+    losing = [b for b, o in zip(order, dens) if o["net_inr"] < 0]
+    if losing:
+        a(f"**Working the queue in density order loses money** at {', '.join(losing)} minutes: it "
+          f"spends the analyst's time and stops ₹{dens[0]['fraud_value_stopped_inr']:,.0f} at "
+          f"{order[0]} minutes. Density ranks how tightly a group is tied together, which is not "
+          "the same as how much is at stake in it, so a queue sorted that way puts small dense "
+          "rings ahead of large expensive ones. That is the same lesson as the ring-ranking "
+          "result above, arriving from the cost side.\n")
+
+    lo, hi = budgets[order[0]], budgets[order[-1]]
+    a(f"At {order[0]} minutes the capacity-aware policy stops "
+      f"₹{lo['capacity-aware']['fraud_value_stopped_inr']:,.0f} against "
+      f"₹{lo['density order until the budget is spent']['fraud_value_stopped_inr']:,.0f} for "
+      f"working down the queue in density order, and at {order[-1]} minutes "
+      f"₹{hi['capacity-aware']['fraud_value_stopped_inr']:,.0f} against "
+      f"₹{hi['density order until the budget is spent']['fraud_value_stopped_inr']:,.0f}. "
+      "Auto-holding everything stops the most fraud of any policy and needs no analyst at all - "
+      f"it also harms ₹{lo['auto-hold everything']['legitimate_value_harmed_inr']:,.0f} of "
+      "legitimate value doing it, which is the whole reason the review budget exists.\n")
+
+    acc = po.get("reviewer_accuracy") or {}
+    if "0.90" in acc and "1.00" in acc:
+        p100 = acc["1.00"]["budgets"][order[1] if len(order) > 1 else order[0]]["capacity-aware"]
+        p90 = acc["0.90"]["budgets"][order[1] if len(order) > 1 else order[0]]["capacity-aware"]
+        a(f"**A reviewer who is right nine times in ten**, at {order[1] if len(order) > 1 else order[0]} "
+          f"minutes: ₹{p90['fraud_value_stopped_inr']:,.0f} stopped against "
+          f"₹{p100['fraud_value_stopped_inr']:,.0f} for a perfect one, and "
+          f"₹{p90['legitimate_value_harmed_inr']:,.0f} of legitimate value harmed against nothing. "
+          "The perfect-reviewer number is an upper bound and is labelled as one everywhere it "
+          "appears.\n")
+
+    cs = po.get("churn_sweep") or {}
+    if cs:
+        a("**How much churn matters.** Churn is what a wrongly held customer costs. It should "
+          "change which rings are worth auto-holding and never which are worth an analyst's "
+          "time, and that is what it does:\n")
+        a("| churn | rings reviewed at 60 min | rings auto-held | fraud ₹ stopped | legitimate ₹ harmed |")
+        a("|---:|---:|---:|---:|---:|")
+        for c, blk in cs.items():
+            o = blk["at_60_minutes"]
+            a(f"| {float(c):.0%} | {blk['rings_reviewed']} | {blk['rings_auto_held']} | "
+              f"₹{o['fraud_value_stopped_inr']:,.0f} | ₹{o['legitimate_value_harmed_inr']:,.0f} |")
+        a("")
+
+    rows = [r for r in po.get("night_by_night_at_120_minutes", []) if r.get("rings_in_queue")]
+    if rows:
+        a("**One analyst, two hours a night**, working the nightly queues as they arrived - the "
+          "case ids come from the anchored extraction, so a ring reviewed on one night is the "
+          "same case if it returns on the next:\n")
+        a("| night | queue | cases reviewed | auto-held | minutes | fraud ₹ stopped | running total |")
+        a("|---:|---:|---:|---:|---:|---:|---:|")
+        for r in rows:
+            a(f"| {r['night']} | {r['rings_in_queue']} | {r['n_cases_reviewed']} | "
+              f"{r['rings_auto_held']} | {r['minutes_used']:.0f} | "
+              f"₹{r['fraud_value_stopped_inr']:,.0f} | "
+              f"₹{r['cumulative_fraud_value_stopped_inr']:,.0f} |")
+        a("")
+        a(f"By the last night that is ₹{rows[-1]['cumulative_fraud_value_stopped_inr']:,.0f} of "
+          f"promotion value stopped for ₹{rows[-1]['cumulative_legitimate_value_harmed_inr']:,.0f} "
+          "of legitimate value harmed, on the assumptions above.\n")
+
+    a("Each case card now carries its recommended action and the two numbers behind it: what "
+      "reviewing it is expected to be worth, and what auto-holding it is expected to be worth. "
+      "A reviewer who disagrees can see exactly which of the two the recommendation turned on.\n")
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -1215,6 +1412,7 @@ def write_results(cfg, score: dict | None, ring: dict | None,
         views = json.loads(vp.read_text())
     if views and views.get("delta"):
         _anchored_section(a, proc)
+        _policy_section(a, proc)
         a("## What the relations I cannot rebuild are worth\n")
         a("Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at "
           "all in the released order files, so a graph built from those files "
@@ -1667,6 +1865,18 @@ def update_readme(cfg, score, ring, views) -> Path | None:
                  f"its base rate, at {r['normal_flagged_per_fraud_caught']} good "
                  f"cards per fraudulent one caught |")
 
+    po = artefact("policy.json")
+    if po:
+        rows_ = [r for r in po.get("night_by_night_at_120_minutes", []) if r.get("rings_in_queue")]
+        b60 = po["final_night"]["budgets"].get("60", {})
+        if rows_ and b60:
+            c, d_ = b60["capacity-aware"], b60["density order until the budget is spent"]
+            L.append(f"| What one analyst an hour a night stops | "
+                     f"₹{c['fraud_value_stopped_inr']:,.0f} of promotion value against "
+                     f"₹{d_['fraud_value_stopped_inr']:,.0f} for working the queue in order, "
+                     f"for ₹{c['legitimate_value_harmed_inr']:,.0f} of legitimate value harmed "
+                     f"(assumed rupees) |")
+
     an = artefact("anchored.json")
     if an:
         s_ = an["summary"]; g_ = an.get("global_peeling_from_replay") or {}
@@ -1734,6 +1944,11 @@ def main() -> None:
     anj = proc / "anchored.json"
     if anj.exists():
         d = ring_persistence_chart(json.loads(anj.read_text()), figs)
+        if d:
+            figures.append(d)
+    poj = proc / "policy.json"
+    if poj.exists():
+        d = policy_frontier_chart(json.loads(poj.read_text()), figs)
         if d:
             figures.append(d)
     fragj = proc / "fragmentation.json"

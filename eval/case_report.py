@@ -45,6 +45,13 @@ font-weight:600;margin-right:6px}
 .tag.n{background:#f0fdf4;color:var(--ok)}
 .tag.u{background:#f5f5f4;color:var(--muted)}
 .rare{color:var(--accent);font-weight:600}
+.act{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;margin:14px 0 2px;
+padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.act .verb{font-weight:700;letter-spacing:-.01em}
+.act .verb.review{color:var(--accent)}
+.act .verb.hold{color:var(--warn)}
+.act .verb.ignore{color:var(--muted)}
+.act .why{color:var(--muted);font-size:12.5px}
 .note{color:var(--muted);font-size:12.5px;margin-top:12px;padding-top:12px;
 border-top:1px solid var(--line)}
 .assume{background:#fffbeb;border:1px solid #fde68a;color:#78350f;
@@ -57,7 +64,47 @@ def esc(x) -> str:
     return html.escape(str(x))
 
 
-def render(report: dict) -> str:
+def recommendations(report: dict, cfg, budget: int = 120) -> dict:
+    """The recommended action for each ring on this page, and its two numbers.
+
+    The page shows the global extractor's rings, not the anchored nightly
+    queue, so the honest question a card can answer is: if these were the
+    queue tonight and an analyst had `budget` minutes, what should be done
+    with this one? That is the same planner the results section uses, run over
+    exactly the rings shown here, and the page says so.
+    """
+    import numpy as np
+
+    cases = report.get("case_files", [])
+    if not cases or any(len(c.get("members_sample", [])) != c.get("size") for c in cases):
+        return {}
+    try:
+        from orbweaver.rings.policy import (CHURN_HEADLINE, expected_values, load_inputs,
+                                            plan_capacity_aware, ring_economics)
+        labels, scores, promo_value, ltv, _ = load_inputs(cfg)
+    except Exception:
+        return {}
+
+    rings, keys = [], []
+    for c in cases:
+        m = np.asarray(c["members_sample"], dtype=np.int64)
+        e = ring_economics(m, scores, promo_value, ltv, labels, cfg)
+        e["density"] = c.get("density", 0.0)
+        rings.append(e)
+        keys.append(c.get("rank"))
+    rev, held = plan_capacity_aware(rings, budget, CHURN_HEADLINE)
+    out = {}
+    for i, (k, r) in enumerate(zip(keys, rings)):
+        ev_review, ev_hold = expected_values(r, CHURN_HEADLINE)
+        out[k] = {"action": "review" if i in rev else ("auto-hold" if i in held else "ignore"),
+                  "review_inr": ev_review, "hold_inr": ev_hold,
+                  "minutes": r["review_minutes"]}
+    out["_budget"] = budget
+    out["_churn"] = CHURN_HEADLINE
+    return out
+
+
+def render(report: dict, actions: dict | None = None) -> str:
     cases = report.get("case_files", [])
     best = report.get("best_cell", {})
     graph = report.get("graph", {})
@@ -91,6 +138,13 @@ def render(report: dict) -> str:
         a(f'<div class="stat"><b>{esc(val)}</b><span>{label}</span></div>')
     a("</div>")
 
+    if actions:
+        a(f'<div class="assume">Each card carries the action the review policy would take '
+          f'if these {len(cases)} rings were tonight\'s queue and an analyst had '
+          f'{actions["_budget"]} minutes, with a wrongly held customer assumed to lose '
+          f'{actions["_churn"]:.0%} of their value. The two figures behind it are shown so a '
+          'reviewer can see which one the recommendation turned on.</div>')
+
     a('<div class="assume">These are leads for a human to review, not verdicts. '
       "Rupee figures are counts multiplied by an assumed value — this dataset "
       "ships no monetary amounts — so they rank rings against each other and "
@@ -109,6 +163,19 @@ def render(report: dict) -> str:
         a(f'<span class="tag f">{lab.get("fraud", 0)} known fraud</span>'
           f'<span class="tag n">{lab.get("normal", 0)} known good</span>'
           f'<span class="tag u">{lab.get("unlabelled", 0)} unreviewed</span>')
+
+        act = (actions or {}).get(c.get("rank"))
+        if act:
+            verb = {"review": "Review", "auto-hold": "Auto-hold",
+                    "ignore": "Leave for now"}[act["action"]]
+            cls = {"review": "review", "auto-hold": "hold", "ignore": "ignore"}[act["action"]]
+            a('<div class="act">'
+              f'<span class="verb {cls}">{verb}</span>'
+              f'<span>reviewing it is worth <strong>₹{act["review_inr"]:,.0f}</strong> '
+              f'and costs {act["minutes"]} analyst minutes</span>'
+              f'<span>auto-holding it is worth <strong>₹{act["hold_inr"]:,.0f}</strong> '
+              'and costs none</span>'
+              '</div>')
 
         ents = c.get("shared_entities", [])
         if ents:
@@ -144,7 +211,8 @@ def main() -> None:
         print("no ring_report.json; run `make rings` first")
         return
     dest = Path(cfg.abs_path(cfg.paths.figures)).parent / "case-files.html"
-    dest.write_text(render(json.loads(src.read_text())))
+    report = json.loads(src.read_text())
+    dest.write_text(render(report, recommendations(report, cfg)))
     print(f"wrote {dest}")
 
 

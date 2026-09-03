@@ -84,7 +84,13 @@ rings:
   lambda_headline: 5.0
 
 cost:
-  # Both are assumptions and are labelled as such in every output.
+  # All of these are assumptions and are labelled as such in every output.
   # PPA ships no monetary amounts at all (docs/data.md).
   assumed_avg_promo_value_inr: 100.0
   assumed_avg_order_value_inr: 400.0
+  # What an analyst's time is worth, for the review policy. Rs 600 an hour.
+  assumed_reviewer_cost_per_minute_inr: 10.0
+  # Reviewing a ring: a fixed cost to open the case plus a per-member cost to
+  # work through it. Minutes, and an assumption like the rest.
+  review_minutes_fixed: 3.0
+  review_minutes_per_member: 0.25
