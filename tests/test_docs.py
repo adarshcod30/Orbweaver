@@ -72,6 +72,7 @@ ARTEFACT_SECTIONS = {
     "policy.json": "## What to do with the queue, given a budget",
     "lockstep.json": "## Telling a crowd from a ring by when it formed",
     "offers.json": "## Which offers are being farmed",
+    "label_budget.json": "## How many confirmed cases before this works",
 }
 
 # The demo bundle has no artefact in data/processed - it *is* the artefact -
@@ -139,6 +140,7 @@ ARTEFACT_FIGURES = {
     "policy.json": "policy_frontier.png",
     "lockstep.json": "lockstep.png",
     "offers.json": "offer_leakage.png",
+    "label_budget.json": "label_budget.png",
 }
 
 

@@ -1237,6 +1237,144 @@ def _offers_section(a, proc: Path) -> None:
         a("Early warning did not run this pass.\n")
 
 
+def label_budget_chart(lb: dict, out: Path) -> Path | None:
+    """Held-out AUPRC and ring precision against how many labels the scorer
+    was trained on, log-x, with seed min-max bands and the base rate and
+    zero-label result marked."""
+    points = lb.get("points") or []
+    if not points:
+        return None
+
+    fig, ax = plt.subplots(figsize=(9.0, 5.2), dpi=160)
+    _style(ax)
+    ax.set_xscale("log")
+
+    x = [p["labelled_accounts_used"] for p in points]
+    for key, colour, label in (("auprc", ACCENT, "held-out AUPRC"),
+                               ("ring_precision", INK, "ring precision")):
+        y = [p[key]["mean"] for p in points]
+        lo = [p[key]["min"] for p in points]
+        hi = [p[key]["max"] for p in points]
+        ax.plot(x, y, marker="o", markersize=5, linewidth=1.6, color=colour, label=label)
+        ax.fill_between(x, lo, hi, color=colour, alpha=0.15, linewidth=0)
+
+    ref = lb.get("reference_lines", {})
+    if ref.get("base_rate") is not None:
+        ax.axhline(ref["base_rate"], color=MUTED, linewidth=1.1, linestyle="--",
+                  label=f"base rate ({ref['base_rate']})")
+    if ref.get("zero_label_unpruned_ring_precision") is not None:
+        ax.axhline(ref["zero_label_unpruned_ring_precision"], color=MUTED, linewidth=1.1,
+                  linestyle=":", label=f"zero-label result ({ref['zero_label_unpruned_ring_precision']})")
+
+    knee = lb.get("knee", {})
+    b = knee.get("beats_base_rate_at")
+    if b:
+        ax.axvline(b["labelled_accounts"], color=ACCENT, linewidth=1.0, linestyle="-.",
+                  alpha=0.6, label=f"beats base rate ({b['labelled_accounts']:,.0f} accounts)")
+
+    ax.set_xlabel("labelled accounts used (log scale)", fontsize=10, color=INK)
+    ax.set_ylabel("score", fontsize=10, color=INK)
+    ax.set_ylim(0, 1.0)
+    ax.set_title("How much labelled data before this works?", color=INK, fontsize=12,
+                 loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+
+    fig.tight_layout()
+    dest = out / "label_budget.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
+def _label_budget_section(a, proc: Path) -> None:
+    f = proc / "label_budget.json"
+    if not f.exists():
+        return
+    lb = json.loads(f.read_text())
+    points = lb.get("points") or []
+    knee = lb.get("knee") or {}
+    ref = lb.get("reference_lines") or {}
+
+    a("## How many confirmed cases before this works\n")
+    a("The first thing a risk lead asks about a system like this is not how good it is but "
+      "whether it works before any confirmed ring labels exist. This project had answered the "
+      f"two extremes without meaning to - zero labels lands at {ref.get('zero_label_unpruned_ring_precision')}, "
+      f"below the {ref.get('base_rate')} base rate, and all of them reach 0.7292 - with nothing "
+      "in between. The space between is the entire deployment plan for a team starting from "
+      "nothing.\n")
+    a(f"The scorer and its calibration are refitted from scratch at each point on a stratified, "
+      f"nested fraction of the training pool - the same {lb.get('seeds_per_fraction')} seeds' "
+      "subsets at 5% are contained in the subsets at 10%, and so on - using the pipeline's own "
+      "`fit_scorer` unchanged. The 100% point reuses today's training split exactly rather than "
+      "resampling \"everything\", which is what makes it a guard: it reproduces "
+      f"{points[-1]['auprc']['mean'] if points else '—'} AUPRC and "
+      f"{points[-1]['ring_precision']['mean'] if points else '—'} ring precision, matching the "
+      "committed headline.\n")
+
+    a("| labelled accounts | fraction | held-out AUPRC (range) | ring precision (range) | "
+      "real customers per catch | fraud found |")
+    a("|---:|---:|---:|---:|---:|---:|")
+    for p in points:
+        au, rp = p["auprc"], p["ring_precision"]
+        a(f"| {p['labelled_accounts_used']:,.0f} | {p['fraction']:.1%} | "
+          f"{au['mean']} ({au['min']}-{au['max']}) | "
+          f"{rp['mean']} ({rp['min']}-{rp['max']}) | "
+          f"{p['normal_flagged_per_fraud_caught']['mean']} | "
+          f"{p['fraud_members']['mean']:.1f} |")
+    a("")
+
+    b = knee.get("beats_base_rate_at")
+    if b:
+        a(f"**The knee: {b['labelled_accounts']:,.0f} confirmed accounts** "
+          f"({b['fraction']:.1%} of today's training pool) is the smallest label count at which "
+          f"prune-then-peel first beats the base rate, reaching {b['ring_precision_mean']} ring "
+          "precision. Reported as a count rather than only a percentage, because a count is what "
+          "a team starting a labelling effort can actually plan against - a percentage of an "
+          "as-yet-unknown future pool is not.\n")
+    else:
+        a("**The base rate was never beaten across this sweep** - a result worth taking at face "
+          "value rather than assuming a wider sweep would have found it eventually.\n")
+
+    d = knee.get("diminishing_returns_after")
+    if d:
+        a(f"**Diminishing returns after {d['labelled_accounts']:,.0f} accounts** "
+          f"({d['fraction']:.1%}): the next point on the sweep buys "
+          f"only +{d['auprc_gain_from_previous_point']} AUPRC, below the stated "
+          f"{d['increment_threshold']} threshold for what counts as still buying something.\n")
+    elif len(points) >= 2:
+        thresh = lb.get("diminishing_returns_auprc_increment")
+        a(f"**No plateau was observed.** AUPRC keeps gaining at or above the stated "
+          f"{thresh} threshold for most of the sweep, including its "
+          f"last doubling - {points[-2]['labelled_accounts_used']:,.0f} to "
+          f"{points[-1]['labelled_accounts_used']:,.0f} accounts still buys "
+          f"+{round(points[-1]['auprc']['mean'] - points[-2]['auprc']['mean'], 4)} AUPRC. More "
+          "confirmed labels would plausibly still help past what this sweep covers.\n")
+
+    if len(points) >= 2:
+        first, last = points[0], points[-1]
+        a(f"**Ring precision at the smallest fraction tested - "
+          f"{first['labelled_accounts_used']:,.0f} accounts - is "
+          f"{first['ring_precision']['mean']}**, against {last['ring_precision']['mean']} with "
+          "every label available. The account scorer is far weaker with almost no labels "
+          f"(AUPRC {first['auprc']['mean']} against {last['auprc']['mean']}), but pruning then "
+          "peeling stays usable well before the scorer is any good, because the graph's own "
+          "structure is carrying most of the signal once any reasonable threshold separates "
+          "suspicious accounts from the rest - the same finding `docs/design-decisions.md` "
+          "already makes about lambda=0 degrading gracefully, now shown to hold at the other "
+          "end of the label budget too.\n")
+
+    ie = lb.get("ieee_cis")
+    if ie:
+        a("**Repeated on IEEE-CIS:**\n")
+    else:
+        a("This did not repeat on IEEE-CIS this pass. Each point here needs a full retrain and "
+          "re-extraction; the PPA sweep alone is twenty-two such passes over the late-window "
+          "graph. IEEE-CIS's own pipeline additionally refits per-relation weights from the same "
+          "labels the scorer trains on, so an honest repeat would need to re-derive those at "
+          "every fraction too, not reuse today's - a second sweep's worth of work rather than a "
+          "cheap extension of this one.\n")
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -1793,6 +1931,7 @@ def write_results(cfg, score: dict | None, ring: dict | None,
         _demo_section(a, cfg)
         _lockstep_section(a, proc)
         _offers_section(a, proc)
+        _label_budget_section(a, proc)
         a("## What the relations I cannot rebuild are worth\n")
         a("Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at "
           "all in the released order files, so a graph built from those files "
@@ -2388,6 +2527,14 @@ def update_readme(cfg, score, ring, views) -> Path | None:
                      f"{row50['fraud_coverage']:.1%} of all labelled fraud, "
                      f"{row50['fraud_coverage'] / rr:.1f}x the {rr:.2%} ring recall ceiling |")
 
+    lb = artefact("label_budget.json")
+    if lb:
+        b = (lb.get("knee") or {}).get("beats_base_rate_at")
+        if b:
+            L.append(f"| How many confirmed cases before this works | prune-then-peel first "
+                     f"beats the base rate at {b['labelled_accounts']:,.0f} confirmed accounts "
+                     f"({b['fraction']:.1%} of the training pool) |")
+
     an = artefact("anchored.json")
     if an:
         s_ = an["summary"]; g_ = an.get("global_peeling_from_replay") or {}
@@ -2470,6 +2617,11 @@ def main() -> None:
     ofj = proc / "offers.json"
     if ofj.exists():
         d = offer_leakage_chart(json.loads(ofj.read_text()), figs)
+        if d:
+            figures.append(d)
+    lbj = proc / "label_budget.json"
+    if lbj.exists():
+        d = label_budget_chart(json.loads(lbj.read_text()), figs)
         if d:
             figures.append(d)
     fragj = proc / "fragmentation.json"

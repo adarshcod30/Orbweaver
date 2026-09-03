@@ -495,6 +495,31 @@ Fifty offers ranked by size cover 7.08% of all labelled fraud against the ring's
 
 The other 2,834 never crossed the margin inside the window - a real limit stated rather than hidden: an offer can be confirmed bad only once enough of its redeemers accumulate to say so, and for some that happens no earlier than the final night.
 
+## How many confirmed cases before this works
+
+The first thing a risk lead asks about a system like this is not how good it is but whether it works before any confirmed ring labels exist. This project had answered the two extremes without meaning to - zero labels lands at 0.0696, below the 0.2242 base rate, and all of them reach 0.7292 - with nothing in between. The space between is the entire deployment plan for a team starting from nothing.
+
+The scorer and its calibration are refitted from scratch at each point on a stratified, nested fraction of the training pool - the same 3 seeds' subsets at 5% are contained in the subsets at 10%, and so on - using the pipeline's own `fit_scorer` unchanged. The 100% point reuses today's training split exactly rather than resampling "everything", which is what makes it a guard: it reproduces 0.3796 AUPRC and 0.7292 ring precision, matching the committed headline.
+
+| labelled accounts | fraction | held-out AUPRC (range) | ring precision (range) | real customers per catch | fraud found |
+|---:|---:|---:|---:|---:|---:|
+| 1,146 | 0.5% | 0.2881 (0.2835-0.2909) | 0.6359 (0.4124-0.7941) | 0.7033 | 151.3 |
+| 2,292 | 1.0% | 0.2919 (0.2785-0.3078) | 0.4547 (0.3478-0.5514) | 1.2797 | 133.7 |
+| 4,584 | 2.0% | 0.3153 (0.302-0.323) | 0.631 (0.5238-0.7383) | 0.6163 | 139.0 |
+| 11,461 | 5.0% | 0.3376 (0.3336-0.3418) | 0.6907 (0.5778-0.7652) | 0.47 | 183.3 |
+| 22,921 | 10.0% | 0.3493 (0.3449-0.354) | 0.6664 (0.6582-0.6742) | 0.5007 | 279.7 |
+| 45,843 | 20.0% | 0.358 (0.3537-0.3611) | 0.6753 (0.6558-0.6886) | 0.4817 | 238.0 |
+| 114,606 | 50.0% | 0.368 (0.3663-0.3698) | 0.6789 (0.6337-0.7351) | 0.4783 | 212.3 |
+| 229,213 | 100.0% | 0.3796 (0.3796-0.3796) | 0.7292 (0.7292-0.7292) | 0.371 | 245.0 |
+
+**The knee: 1,146 confirmed accounts** (0.5% of today's training pool) is the smallest label count at which prune-then-peel first beats the base rate, reaching 0.6359 ring precision. Reported as a count rather than only a percentage, because a count is what a team starting a labelling effort can actually plan against - a percentage of an as-yet-unknown future pool is not.
+
+**No plateau was observed.** AUPRC keeps gaining at or above the stated 0.01 threshold for most of the sweep, including its last doubling - 114,606 to 229,213 accounts still buys +0.0116 AUPRC. More confirmed labels would plausibly still help past what this sweep covers.
+
+**Ring precision at the smallest fraction tested - 1,146 accounts - is 0.6359**, against 0.7292 with every label available. The account scorer is far weaker with almost no labels (AUPRC 0.2881 against 0.3796), but pruning then peeling stays usable well before the scorer is any good, because the graph's own structure is carrying most of the signal once any reasonable threshold separates suspicious accounts from the rest - the same finding `docs/design-decisions.md` already makes about lambda=0 degrading gracefully, now shown to hold at the other end of the label budget too.
+
+This did not repeat on IEEE-CIS this pass. Each point here needs a full retrain and re-extraction; the PPA sweep alone is twenty-two such passes over the late-window graph. IEEE-CIS's own pipeline additionally refits per-relation weights from the same labels the scorer trains on, so an honest repeat would need to re-derive those at every fraction too, not reuse today's - a second sweep's worth of work rather than a cheap extension of this one.
+
 ## What the relations I cannot rebuild are worth
 
 Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:
@@ -678,5 +703,7 @@ The separator is the **account score**, not the structure — the touched cluste
 ![lockstep](figures/lockstep.png)
 
 ![offer_leakage](figures/offer_leakage.png)
+
+![label_budget](figures/label_budget.png)
 
 ![adversarial](figures/adversarial.png)

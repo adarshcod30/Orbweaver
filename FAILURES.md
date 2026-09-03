@@ -7,7 +7,7 @@ Six of these are worth reading before the rest:
 
 - [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
 - [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
-- [3 September — `make reproduce` wrote a third of the report before the work existed](#3-september--make-reproduce-wrote-a-third-of-the-report-before-the-work-existed) — a green run for three and a half hours that produced the wrong file
+- [4 September — I called a single noisy step "diminishing returns"](#4-september--i-called-a-single-noisy-step-diminishing-returns) — a knee-finder that mistook sampling variance at the smallest fraction for the shape of the whole curve
 - [4 September — the null model I built to remove a size bias had one of its own](#4-september--the-null-model-i-built-to-remove-a-size-bias-had-one-of-its-own) — a bug that would not have announced itself in a spot check
 - [4 September — time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) — the fair test, built for exactly this weakness, came back a clean null
 - [4 September — "every offer" turned out to mean five million rows, most of them noise or a default value](#4-september--every-offer-turned-out-to-mean-five-million-rows-most-of-them-noise-or-a-default-value) — a documented data quirk I had already read about, applied to the wrong module
@@ -1398,3 +1398,46 @@ number I have understood well enough to act on elsewhere in the same
 function. I read the None correctly as "the ranking is dominated by small
 offers" for the purposes of the report section, and then wrote a completely
 separate piece of code five minutes later that assumed the opposite.
+
+---
+
+## 4 September — I called a single noisy step "diminishing returns"
+
+**What broke:** the label-budget sweep's knee-finder, before it had seen a
+real dataset. `find_knee` walked the eight fractions of the curve and
+reported "diminishing returns" at the first step where the AUPRC gain fell
+under the stated 0.01 threshold. On the real three-seed sweep, that first
+step was 0.5% to 1% of the training pool - 1,146 accounts against 2,292, the
+two smallest and noisiest points on the whole curve - where the gain was
++0.0038. The very next step, 1% to 2%, gained +0.0234, six times the
+threshold, and the curve went on gaining at or above the threshold for
+almost every step after that, including +0.0116 on the final doubling from
+50% to 100%. I had a function that would call the flattest-looking blip in a
+noisy region "the knee," while the real trend kept climbing past it.
+
+**What I believed:** that "the first small step" was a reasonable stand-in
+for "the point after which gains stay small." I was careful about the
+increment threshold, the three seeds, and the stratified-nested subsets, and
+never separately asked whether one dip was strong evidence of a plateau.
+
+**Why that was wrong:** the smallest fractions have the fewest accounts and
+the fewest labelled examples in each seed's random split, so they are
+exactly where three seeds disagree with each other the most, before any real
+trend has had a chance to dominate the noise. A detector that stops at the
+first small gain will trigger there almost by construction, regardless of
+what the rest of the curve does - it was describing sampling variance at
+1,146 accounts, not the shape of the sweep.
+
+**What fixed it:** requiring a genuine plateau - the point after which
+*every* remaining step on the sweep stays under the threshold, not just the
+next one. On the real data this changes the answer entirely: no such point
+exists. AUPRC gains at least 0.0087 on every remaining step, so the honest
+report is that this sweep never found diminishing returns, not that it found
+them at 2,292 accounts.
+
+**What I take from it:** a threshold comparison between two adjacent points
+is not the same claim as "the trend has flattened," and the two are easiest
+to conflate exactly where a curve is noisiest - which for a sweep like this
+is always the smallest-sample end, the part most likely to get read first. I
+added a synthetic test with an early noisy dip followed by a real climb
+specifically so this distinction cannot silently regress.

@@ -7,6 +7,7 @@ PY := python3
         windows-weighted score sage rings rings-deep hostel views adversarial overlay generalise \
         download-gadbench download-ieee-cis ieee-cis merchant-view replay \
         ring-scorer ring-context twins anchored policy lockstep offers demo-bundle \
+        label-budget \
         report reproduce reproduce-core test clean
 
 help:
@@ -114,6 +115,9 @@ lockstep:  ## a second, burst-weighted graph; does telling time from rarity help
 offers:  ## which promotions, coupon types and stimulations are being farmed
 	$(PY) -u -m eval.offers
 
+label-budget:  ## how much labelled data before this beats the base rate
+	$(PY) -u -m eval.label_budget
+
 sage:  ## optional GraphSAGE scorer, reported beside the default one
 	$(PY) -u -m orbweaver.scoring.sage
 
@@ -140,7 +144,7 @@ reproduce-core: schema data graph windows-weighted test score sage rings rings-d
 # written before the six stages above it have produced anything, and the
 # sections that depend on them are quietly missing. Running it twice costs a
 # couple of minutes and is worth it.
-reproduce: reproduce-core merchant-view replay ring-scorer ring-context twins ieee-cis anchored policy lockstep offers demo-bundle  ## everything, end to end
+reproduce: reproduce-core merchant-view replay ring-scorer ring-context twins ieee-cis anchored policy lockstep offers label-budget demo-bundle  ## everything, end to end
 	$(PY) -u -m eval.report
 	$(PY) -u -m eval.case_report
 	@echo
