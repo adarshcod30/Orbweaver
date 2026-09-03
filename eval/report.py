@@ -7,6 +7,7 @@ number in the documentation can only be wrong if the run that produced it was.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import matplotlib
@@ -380,6 +381,83 @@ def merchant_vs_platform_chart(mv: dict, out: Path) -> Path | None:
 
     fig.tight_layout()
     dest = out / "merchant_vs_platform.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
+def ring_context_chart(rc: dict, out: Path) -> Path | None:
+    """Why feeding ring membership back into the account score did nothing.
+
+    Both panels share a feature order deliberately. The left one is the
+    ceiling - the share of held-out accounts the feature is non-zero for -
+    and the right one is what it actually bought. The point of putting them
+    side by side is that the second was determined by the first before any
+    model ran: a feature that is zero for ninety-nine accounts in a hundred
+    cannot move an average over all of them.
+    """
+    cov = rc.get("coverage") or {}
+    res = rc.get("results") or {}
+    if not cov or not res:
+        return None
+
+    best = {}
+    for key, val in res.items():
+        m = re.search(r"\[([^\]]+)\]", key)
+        if m and "delta_auprc" in val:
+            f = m.group(1)
+            best[f] = max(best.get(f, 0.0), val["delta_auprc"])
+    feats = [f for f in cov if f in best]
+    if not feats:
+        return None
+    feats.sort(key=lambda f: cov[f]["heldout_share"])
+
+    labels = [f.replace("_", " ") for f in feats]
+    shares = [cov[f]["heldout_share"] * 100 for f in feats]
+    deltas = [best[f] for f in feats]
+    y = np.arange(len(feats))
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.6), dpi=160)
+
+    ax = axes[0]
+    _style(ax)
+    ax.barh(y, shares, color=MUTED, height=0.55)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.set_xlabel("share of held-out accounts it is non-zero for (%)",
+                  fontsize=10, color=INK)
+    ax.set_xlim(0, max(max(shares) * 1.35, 1.0))
+    ax.set_title("How many accounts it reaches", color=INK, fontsize=12,
+                 loc="left", pad=10)
+    for i, v in enumerate(shares):
+        ax.annotate(f"{v:.2f}%", xy=(v, i), xytext=(4, 0),
+                    textcoords="offset points", va="center", fontsize=9,
+                    color=INK)
+
+    ax = axes[1]
+    _style(ax)
+    ax.barh(y, deltas, color=ACCENT, height=0.55)
+    ax.set_yticks(y)
+    ax.set_yticklabels([])
+    ax.set_xlabel("best change in held-out AUPRC", fontsize=10, color=INK)
+    ax.set_xlim(0, max(max(deltas) * 1.45, 0.002))
+    # Four ticks, not the default seven - at this scale the labels are wide
+    # enough to run into each other and the axis becomes unreadable.
+    ax.xaxis.set_major_locator(plt.MaxNLocator(4))
+    ax.tick_params(axis="x", labelsize=8)
+    ax.set_title("What it bought", color=INK, fontsize=12, loc="left", pad=10)
+    for i, v in enumerate(deltas):
+        ax.annotate(f"+{v:.4f}", xy=(v, i), xytext=(4, 0),
+                    textcoords="offset points", va="center", fontsize=9,
+                    color=INK)
+
+    base = res.get("score alone", {}).get("auprc")
+    if base is not None:
+        fig.text(0.5, -0.04, f"against {base} for the score on its own",
+                 ha="center", fontsize=9, color=MUTED)
+
+    fig.tight_layout()
+    dest = out / "ring_context.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return dest
@@ -1435,6 +1513,11 @@ def main() -> None:
     mvj = proc / "merchant_view.json"
     if mvj.exists():
         d = merchant_vs_platform_chart(json.loads(mvj.read_text()), figs)
+        if d:
+            figures.append(d)
+    rcj = proc / "ring_context.json"
+    if rcj.exists():
+        d = ring_context_chart(json.loads(rcj.read_text()), figs)
         if d:
             figures.append(d)
     fragj = proc / "fragmentation.json"

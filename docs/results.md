@@ -437,4 +437,6 @@ The separator is the **account score**, not the structure — the touched cluste
 
 ![merchant_vs_platform](figures/merchant_vs_platform.png)
 
+![ring_context](figures/ring_context.png)
+
 ![adversarial](figures/adversarial.png)

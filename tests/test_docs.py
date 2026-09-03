@@ -93,3 +93,32 @@ def test_report_runs_after_every_stage_it_reports_on():
     assert "report" not in prereqs, (
         "make builds a target once per run, so `report` here is a no-op and "
         "the report is written before the later stages have run")
+
+
+# Each investigation is supposed to leave both a section and a picture behind.
+# The section check above caught a stale results file; this one exists because
+# ring context shipped with a section and no figure, and nothing noticed.
+ARTEFACT_FIGURES = {
+    "merchant_view.json": "merchant_vs_platform.png",
+    "replay.json": "time_to_detection.png",
+    "ring_scorer.json": "queue_by_ranking.png",
+    "ring_context.json": "ring_context.png",
+    "twins.json": "adversarial.png",
+    "ieee_cis.json": "ieee_relation_lift.png",
+}
+
+
+def test_every_artefact_has_a_figure():
+    proc = CFG.abs_path(CFG.paths.processed)
+    figs = CFG.abs_path(CFG.paths.figures)
+    results = ROOT / "docs" / "results.md"
+    text = results.read_text() if results.exists() else ""
+    missing = []
+    for name, fig in ARTEFACT_FIGURES.items():
+        if not (proc / name).exists():
+            continue
+        if not (figs / fig).exists():
+            missing.append(f"{fig} (not drawn)")
+        elif text and f"figures/{fig}" not in text:
+            missing.append(f"{fig} (drawn but not shown)")
+    assert not missing, f"artefacts reported without a figure: {missing}"
