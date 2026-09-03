@@ -105,7 +105,11 @@ class SAGE:
         self.net = Net()
 
 
-def train_sage(cfg: Config | None = None, epochs: int = 3) -> dict:
+def train_sage(cfg: Config | None = None, epochs: int = 3, split=None) -> dict:
+    """`split` defaults to today's real split; the label-budget curve passes
+    a stratified subset instead, so the same training loop that produces the
+    committed headline also produces every point of that sweep - no second,
+    possibly-diverging training path for the smaller fractions."""
     import torch
 
     from eval.metrics import evaluate, ltv_proxy
@@ -114,7 +118,7 @@ def train_sage(cfg: Config | None = None, epochs: int = 3) -> dict:
 
     cfg = cfg or load_config()
     proc = cfg.abs_path(cfg.paths.processed)
-    split = make_split(cfg)
+    split = split or make_split(cfg)
     n = split.labels.size
     device = pick_device()
     print(f"device: {device}")

@@ -520,6 +520,41 @@ The scorer and its calibration are refitted from scratch at each point on a stra
 
 This did not repeat on IEEE-CIS this pass. Each point here needs a full retrain and re-extraction; the PPA sweep alone is twenty-two such passes over the late-window graph. IEEE-CIS's own pipeline additionally refits per-relation weights from the same labels the scorer trains on, so an honest repeat would need to re-derive those at every fraction too, not reuse today's - a second sweep's worth of work rather than a cheap extension of this one.
 
+## Spreading what few labels there are
+
+Gradient boosting and GraphSAGE both need enough labelled rows before they say anything. Fast Belief Propagation (Koutra et al., ECML-PKDD 2011) needs none: it linearises belief propagation into one sparse linear system, `[I + aD - c'A] b_h = phi_h`, solved by a power iteration that is a few sparse matrix-vector products, with a stated convergence condition checked in code before every solve rather than assumed. The hypothesis, stated before running any of this: propagation wins when confirmed labels are scarce and loses when they are plentiful, because it needs no fitted model at all.
+
+`h_h` is set from the account graph's own measured fraud-fraud lift - 2.414x, over 622,109 training-visible edges, matching the 2.4x this project measured by hand at the very start on a different graph state - and capped at whichever of the paper's two convergence bounds (Lemma 5, Lemma 6) is looser: 0.292875 would have been the homophily-only choice, but the graph's own maximum degree caps what a provably-convergent `h_h` can be here, to 0.00118675. The solve converged in 5 iterations, 0.678s, on the full 3,267,961-account, 35,701,750-edge graph.
+
+At full label availability, held-out AUPRC is **0.4615 for FaBP** against 0.3796 for XGBoost and 0.3819 for GraphSAGE - a provably-convergent linear solve, with no fitting step at all, ahead of both learned models on this graph.
+
+| labelled accounts | fraction | XGBoost AUPRC | FaBP AUPRC | GraphSAGE AUPRC |
+|---:|---:|---:|---:|---:|
+| 1,146 | 0.5% | 0.2881 (0.2835-0.2909) | 0.2425 (0.2419-0.2435) | 0.2664 (0.2461-0.2772) |
+| 2,292 | 1.0% | 0.2919 (0.2785-0.3078) | 0.251 (0.2483-0.2536) | 0.3051 (0.2984-0.3099) |
+| 4,584 | 2.0% | 0.3153 (0.302-0.323) | 0.2582 (0.2553-0.2619) | 0.3234 (0.322-0.3244) |
+| 11,461 | 5.0% | 0.3376 (0.3336-0.3418) | 0.2802 (0.2767-0.2832) | 0.3463 (0.3384-0.3511) |
+| 22,921 | 10.0% | 0.3493 (0.3449-0.354) | 0.3078 (0.3049-0.3114) | 0.3598 (0.3583-0.3615) |
+| 45,843 | 20.0% | 0.358 (0.3537-0.3611) | 0.3447 (0.3404-0.3476) | 0.3683 (0.3668-0.3694) |
+| 114,606 | 50.0% | 0.368 (0.3663-0.3698) | 0.4106 (0.4084-0.4123) | 0.3772 (0.3751-0.379) |
+| 229,213 | 100.0% | 0.3796 (0.3796-0.3796) | 0.4615 (0.4615-0.4615) | 0.3819 (0.3819-0.3819) |
+
+**The opposite of the stated hypothesis.** FaBP trails XGBoost at the smallest fraction tested (0.2425 against 0.2881 at 1,146 accounts) and only overtakes it as more labels arrive. With very few confirmed accounts to propagate from, there is simply too little seed signal in the graph for guilt-by-association to spread far; a feature model's engineered signal degrades more gracefully at that end than a propagation method with few seeds does. A null result for the hypothesis as stated, not for the method - full-label FaBP is still ahead.
+
+**Ring test.** Pruning on FaBP beliefs instead of the calibrated XGBoost score, at the same operating point - 2.39% of accounts kept either way, XGBoost's own tau matched to the equivalent quantile of the FaBP belief distribution - then peeling with the same objective: ring precision 0.9886 against 0.7292, recall 0.0114 against 0.0036, 0.012 real customers disturbed per fraud account caught against 0.371. This is the mechanism working as designed rather than a trick: FaBP's belief *is* a measure of graph-proximity to confirmed fraud, and ring precision on held-out neighbours is exactly what that measures well. It says less about whether FaBP is a better general account scorer than about how well-matched propagation is to the specific job of pruning before peeling.
+
+**Bipartite variant.** The same solver on the account-entity graph over r6/r7/r8, capped at the graph's own `n_max` for the reason `build_graph.py` already gives - gives every entity a belief directly from the accounts that redeemed it. Compared against the label-free leakage ranking from "Which offers are being farmed" on the same 106,224 offers (10,832 of 117,056 fell outside the bipartite cap and are not part of this comparison):
+
+| k | precision, FaBP belief | precision, leakage ranking |
+|---:|---:|---:|
+| 10 | 0.9116 | — |
+| 25 | 0.886 | 0.7887 |
+| 50 | 0.9041 | 0.5346 |
+
+FaBP's belief ranking beat the leakage ranking at every budget tested here - the principled propagation, not the simpler aggregation, is the one worth preferring for this job.
+
+**Runtime and memory.** The full 3,267,961-account, 35,701,750-edge solve peaked at 7.4 GB resident, well within the 16 GB this project develops against.
+
 ## What the relations I cannot rebuild are worth
 
 Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:
@@ -705,5 +740,7 @@ The separator is the **account score**, not the structure — the touched cluste
 ![offer_leakage](figures/offer_leakage.png)
 
 ![label_budget](figures/label_budget.png)
+
+![scorer_by_label_budget](figures/scorer_by_label_budget.png)
 
 ![adversarial](figures/adversarial.png)

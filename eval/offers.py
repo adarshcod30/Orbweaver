@@ -102,9 +102,10 @@ def build_offer_table(cfg: Config, split, scores: np.ndarray, ring_of: np.ndarra
             "redemption - one order on the entity assumed per redeemer, the same "
             "convention every other rupee figure in this project uses.")
 
-    # burst_z from 18.1, when the entity is small enough to have one - lockstep
-    # only defines burst_z for entities inside the graph's own size cap, so a
-    # bigger offer's burst_z is honestly absent rather than approximated.
+    # burst_z from the lockstep burstiness measure, when the entity is small
+    # enough to have one - lockstep only defines burst_z for entities inside
+    # the graph's own size cap, so a bigger offer's burst_z is honestly
+    # absent rather than approximated.
     from orbweaver.data.lockstep import burst_z_table, first_arrival_groups
     burst_by_relation: dict[str, dict[int, float]] = {}
     for rel in PROMO_RELATIONS:

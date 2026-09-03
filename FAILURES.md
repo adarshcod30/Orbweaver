@@ -10,7 +10,7 @@ Six of these are worth reading before the rest:
 - [4 September — I called a single noisy step "diminishing returns"](#4-september--i-called-a-single-noisy-step-diminishing-returns) — a knee-finder that mistook sampling variance at the smallest fraction for the shape of the whole curve
 - [4 September — the null model I built to remove a size bias had one of its own](#4-september--the-null-model-i-built-to-remove-a-size-bias-had-one-of-its-own) — a bug that would not have announced itself in a spot check
 - [4 September — time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) — the fair test, built for exactly this weakness, came back a clean null
-- [4 September — "every offer" turned out to mean five million rows, most of them noise or a default value](#4-september--every-offer-turned-out-to-mean-five-million-rows-most-of-them-noise-or-a-default-value) — a documented data quirk I had already read about, applied to the wrong module
+- [4 September — propagation lost when labels were scarce, and only won once they were not](#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not) — the hypothesis ran backwards, and the mechanism that explains why is not the one I wrote down beforehand
 ---
 
 ## 2 September — the first version of this project was the wrong project
@@ -1441,3 +1441,99 @@ to conflate exactly where a curve is noisiest - which for a sweep like this
 is always the smallest-sample end, the part most likely to get read first. I
 added a synthetic test with an early noisy dip followed by a real climb
 specifically so this distinction cannot silently regress.
+
+---
+
+## 4 September — I capped a homophily factor exactly on the boundary the theorem excludes
+
+**What broke:** the function that picks FaBP's homophily factor `h_h` when
+the graph's own measured assortativity would ask for more homophily than
+the convergence proof allows. The paper's two convergence lemmas are both
+strict inequalities - `h_h < bound`, never `<=` - and my first version of
+`choose_h_h` capped by taking `h_h = min(desired, bound)`. When the cap
+actually binds, that sets `h_h` to exactly the value the theorem's own
+inequality excludes: right on the boundary, not inside the region the proof
+covers.
+
+**What I believed:** that "cap at the bound" and "cap strictly under the
+bound" were the same instruction, because the difference is a single point
+on a continuous line and I was thinking about the cap as a ceiling on a
+value, not as one side of a strict inequality with a proof attached to the
+open side of it.
+
+**Why that was wrong:** a strict inequality is not a rounding convention.
+The paper proves the power series converges *when* `h_h` is strictly inside
+the bound; it says nothing about what happens exactly on it, and floating-
+point arithmetic will not politely land just inside on its own. This is
+exactly the kind of gap a spot check would not have caught - the solver
+still runs, still produces a number, and nothing about the output looks
+wrong by itself.
+
+**What fixed it:** a fixed one-part-in-a-million safety margin on the capped
+value, so `h_h` lands strictly inside whichever bound is looser rather than
+on top of it. `h_h` is already tiny on every graph this project builds (the
+account graph's is about 0.0012), so the margin costs nothing in practice
+and buys back the strict inequality the theorem actually needs.
+
+**What I take from it:** I found this by writing the test the spec itself
+asks for - the convergence condition asserted, a violating input raising -
+and then, before trusting that test, writing a second one that calls
+`assert_convergent` on exactly the value my own capping logic had just
+produced. The first test could not have caught this: it only proves the
+*guard* raises on an input designed to violate it, never that the *chooser*
+which is supposed to satisfy the guard actually does. A component and the
+thing that is supposed to feed it a valid input are two different claims,
+and testing one does not test the other.
+
+---
+
+## 4 September — propagation lost when labels were scarce, and only won once they were not
+
+**What broke:** the hypothesis I stated before running the label-budget
+curve through Fast Belief Propagation. Guilt-by-association needs no fitted
+model - only the graph and whatever confirmed labels already exist - so the
+natural expectation was that it would hold up better than a feature model at
+the scarce end of the label budget, where a model has too little to fit, and
+lose its edge once enough labels arrive that a feature model has plenty to
+work with.
+
+**What I believed going in:** propagation wins when confirmed labels are
+scarce and loses when they are plentiful.
+
+**What actually happened:** the reverse, cleanly, across all eight fractions.
+At the smallest fraction (1,146 accounts), FaBP's held-out AUPRC is 0.2425
+against XGBoost's 0.2881 and GraphSAGE's 0.2664 - FaBP is the worst of the
+three. It stays behind XGBoost through 20% of the training pool. Only at 50%
+does it cross over, and by 100% it leads decisively: 0.4615 against 0.3796
+and 0.3819. Not a noisy reversal at one point - a monotonic climb that
+crosses both other curves once and stays crossed.
+
+**Why I believe this, rather than suspecting a bug:** the same solver, same
+`h_h`, same graph, produces a strong, sensible result elsewhere in this run
+that only makes sense if propagation is working correctly - pruning on FaBP
+beliefs at the standard operating point gives 0.9886 ring precision against
+XGBoost's 0.7292, and the bipartite variant's belief ranking beats the
+label-free leakage ranking on offers at every budget tested. A bug in the
+solver would not selectively produce a strong ring-precision result and a
+strong offer-ranking result while getting the label-budget direction
+backwards; a mechanism that behaves differently at few seeds than at many
+would.
+
+**What I take from it, having thought about the mechanism:** propagation
+needs *seeds* to propagate from, and `h_h` is small by the convergence proof
+itself, so each hop's influence decays fast. At 1,146 labelled accounts out
+of 3.27 million, most of the graph is more than a short walk from any seed
+at all, and those accounts get no meaningful signal - they sit near the
+neutral belief regardless of what they actually are. A feature model has no
+such blind spot: every account gets a full feature vector whether or not it
+happens to be graph-close to a labelled example, so a handful of labelled
+rows is enough to fit *something* everywhere, even if what it fits is
+weaker than what more labels would buy. That advantage inverts once labels
+are dense enough that most of the graph is within a few hops of a seed -
+at that point propagation is not limited by reach, and it has no feature
+model's capacity limit or overfitting risk to run into either, which is
+consistent with it pulling further ahead of both learned scorers exactly at
+the high end rather than merely catching up to them. The hypothesis I wrote
+down was about which method needs less data to *fit*; the mechanism that
+actually decided this was about which method needs less data to *reach*,
+and I had not separated those two questions before running the sweep.
