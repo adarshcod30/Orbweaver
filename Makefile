@@ -136,6 +136,7 @@ reproduce-core: schema data graph windows-weighted test score sage rings rings-d
 # couple of minutes and is worth it.
 reproduce: reproduce-core merchant-view replay ring-scorer ring-context twins ieee-cis anchored policy demo-bundle  ## everything, end to end
 	$(PY) -u -m eval.report
+	$(PY) -u -m eval.case_report
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

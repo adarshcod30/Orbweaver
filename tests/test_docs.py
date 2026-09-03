@@ -90,15 +90,37 @@ def test_results_covers_every_artefact_on_disk():
         f"their stages ran: {stale}")
 
 
+def _reproduce_block() -> tuple[list[str], list[str]]:
+    """(prerequisites, recipe lines) for the `reproduce` target."""
+    lines = (ROOT / "Makefile").read_text().splitlines()
+    i = next(idx for idx, ln in enumerate(lines) if ln.startswith("reproduce:"))
+    prereqs = lines[i].split(":", 1)[1].split("##")[0].split()
+    recipe = []
+    for ln in lines[i + 1:]:
+        if not ln.startswith("\t"):
+            break
+        recipe.append(ln.strip())
+    return prereqs, recipe
+
+
 def test_report_runs_after_every_stage_it_reports_on():
-    """The regression guard for the bug above, at the source rather than the
-    symptom: `reproduce` must not name `report` as a prerequisite."""
-    line = next(ln for ln in (ROOT / "Makefile").read_text().splitlines()
-                if ln.startswith("reproduce:"))
-    prereqs = line.split(":", 1)[1].split("##")[0].split()
-    assert "report" not in prereqs, (
-        "make builds a target once per run, so `report` here is a no-op and "
-        "the report is written before the later stages have run")
+    """The regression guard for two bugs found the same way: `docs/results.md`
+    written before six sections existed, then `docs/case-files.html` written
+    before the case ids it links to existed. Both times the cause was the
+    same - a stage that reads other stages' output was a *prerequisite*,
+    which make satisfies once and early, rather than a *recipe step*, which
+    runs every time in order. `report` and `case_report` must be recipe
+    steps of `reproduce`, not prerequisites, and both must actually be
+    there - the first fix corrected eval.report and silently left
+    eval.case_report still running only inside reproduce-core."""
+    prereqs, recipe = _reproduce_block()
+    assert "report" not in prereqs
+    assert any("eval.report" in ln for ln in recipe), \
+        "eval.report is not a recipe step of reproduce"
+    assert any("eval.case_report" in ln for ln in recipe), \
+        "eval.case_report is not a recipe step of reproduce, so the case " \
+        "file page is only ever built inside reproduce-core, before " \
+        "anchored.json exists, and can never link a case id"
 
 
 # Each investigation is supposed to leave both a section and a picture behind.

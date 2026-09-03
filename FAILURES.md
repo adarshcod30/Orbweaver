@@ -1131,3 +1131,57 @@ code was careful enough to refuse bad input and not careful enough to say so,
 which is the worst combination — it turns a loud bug into a missing feature that
 only gets noticed if someone looks at the page. Where a function guards its
 inputs, it should be able to explain why it returned nothing.
+
+---
+
+## 3 September — I fixed the ordering bug and left half of it broken
+
+**What broke:** the same bug as before, in the same Makefile line, and I had
+already "fixed" it once. `report` bundles two commands — `eval.report`, which
+writes `docs/results.md`, and `eval.case_report`, which writes
+`docs/case-files.html`. Both were prerequisites of `reproduce-core`, so both
+ran once, in the middle of `reproduce`, before six of the later stages —
+including `anchored`, which the case-file page links against — had produced
+anything. I found that the first time, and fixed it by adding
+`$(PY) -u -m eval.report` as a recipe step at the end of `reproduce`.
+
+I did not add `eval.case_report` beside it. `docs/results.md` came out
+correct because `eval.report` now ran twice. `docs/case-files.html` kept being
+built exactly once, in the same broken spot, because nothing ever ran
+`eval.case_report` a second time.
+
+**What I believed:** that fixing the mechanism fixed the bug — that "report
+runs a stage before its inputs exist" was one problem with one cause, and
+patching the cause once was enough.
+
+**Why that was wrong:** it was two problems that happened to share a cause.
+`eval.report` and `eval.case_report` are two separate programs that are both
+called `report` because one Make target runs them together, and I fixed the
+target's *name* without checking that both things inside it actually ran
+again. The second fresh-clone verification — which existed specifically to
+catch this class of bug — caught it: two of ten case cards silently lost
+their case-id link, `Case #279` and `Case #565`, with no error anywhere.
+
+**How I found it:** a JSON diff, not a read of the page. `docs/case-files.html`
+differed from the committed version by exactly two lines, and I checked
+`anchored.json` and `ring_report.json` member-for-member before concluding
+the bug was in the Makefile rather than in the data — because two runs of a
+deterministic pipeline over the same inputs producing different output was
+the more alarming possibility, and I was not willing to blame the ordering
+until I had ruled that out.
+
+**What fixed it:** `eval.case_report` is now a recipe step of `reproduce`
+beside `eval.report`, not folded into a single "report" prerequisite. The
+regression test is stronger than the fix, not just a re-statement of it: it
+opens the `reproduce` recipe and asserts both commands are literally present
+as lines, so a future edit that reintroduces exactly this — "the Makefile
+looks like it fixed the report" — fails immediately rather than needing a
+second three-hour fresh clone to notice. I put the old, half-fixed line back
+and confirmed the test catches it before restoring the real fix.
+
+**What I take from it:** I trusted my own earlier fix because it was a fix for
+a bug with the same name. "The report ordering bug" was not one bug; it was a
+category, and I closed one instance of it and mentally filed the category as
+closed. The corrective is boring and I am writing it down because it is easy
+to forget under time pressure: a fix is scoped to exactly what it changed, not
+to what it was supposed to mean.
