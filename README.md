@@ -14,9 +14,14 @@ back negative · [what broke](FAILURES.md), which is the file I would read
 first · and `docs/case-files.html`, the page an analyst is actually handed —
 open it in a browser, or run the console below.
 
-**To run it without downloading anything:** `pip install -r requirements-demo.txt
-&& make console`. The repository carries a half-megabyte bundle of computed
-results and the console serves it when there is no processed data.
+**Live:** [the review console](https://orbweaver-adarshcod30s-projects.vercel.app)
+runs the demo bundle on Vercel; [the static evidence](https://adarshcod30.github.io/Orbweaver/)
+is the same results page and case files on GitHub Pages.
+
+**To run it without downloading anything locally:** `pip install -r
+requirements-demo.txt && make console`. The repository carries a
+half-megabyte bundle of computed results and the console serves it when
+there is no processed data.
 
 ---
 
