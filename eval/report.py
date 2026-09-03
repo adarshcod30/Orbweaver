@@ -15,6 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from eval.case_report import CSS as CASE_CSS, esc
 from orbweaver.config import load_config
 
 INK = "#1c1c1c"
@@ -1781,6 +1782,100 @@ def write_results(cfg, score: dict | None, ring: dict | None,
     return dest
 
 
+def write_index(cfg, ring: dict | None, score: dict | None) -> Path | None:
+    """A landing page for the published docs.
+
+    Static hosting cannot render `docs/results.md`, so this is the front door:
+    the headline numbers, a reading order, and links to the case files and the
+    figures. Like everything else here it is generated, so it cannot drift from
+    the run.
+    """
+    from orbweaver.console.demo import bundle_path
+
+    proc = cfg.abs_path(cfg.paths.processed)
+
+    def art(name):
+        f = proc / name
+        return json.loads(f.read_text()) if f.exists() else {}
+
+    an, po = art("anchored.json"), art("policy.json")
+    best = (ring or {}).get("best_cell", {}) or {}
+    cell = ((ring or {}).get("grid", {}) or {}).get(
+        f"tau={best.get('tau')},lambda={best.get('lambda')}", {})
+    base = (ring or {}).get("base_rate_among_labelled")
+
+    stats = []
+    if cell:
+        stats.append((cell.get("ring_precision"), "share of a ring worth reviewing"))
+        stats.append((base, "base rate among labelled accounts"))
+        stats.append((cell.get("normal_flagged_per_fraud_caught"),
+                      "real customers per fraudster caught"))
+    if an:
+        p3 = ((an.get("summary") or {}).get("persistence_at_0.3") or {}).get(
+            "share_of_final_rings_with_a_predecessor")
+        if p3 is not None:
+            stats.append((f"{p3:.0%}", "rings with a case open the night before"))
+    if po:
+        b = ((po.get("final_night") or {}).get("budgets") or {}).get("60", {}).get("capacity-aware")
+        if b:
+            stats.append((f"₹{b['fraud_value_stopped_inr']:,.0f}",
+                          "stopped by one analyst, one hour a night"))
+
+    bars = "".join(f'<div class="stat"><b>{esc(v)}</b><span>{esc(t)}</span></div>'
+                   for v, t in stats)
+    bundle = bundle_path(cfg) / "meta.json"
+    mb = (f"{json.loads(bundle.read_text())['bytes'] / 1e6:.2f} MB"
+          if bundle.exists() else None)
+
+    dest = cfg.abs_path(".") / "docs" / "index.html"
+    dest.write_text(f"""<!doctype html><meta charset="utf-8">
+<title>Orbweaver — finding coordinated abuse rings</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>{CASE_CSS}</style>
+<div class="wrap">
+<h1>Orbweaver</h1>
+<p class="sub"><em>The one that feels the whole web.</em> Finding coordinated
+promotion-abuse rings in transaction graphs — and reporting what it costs to be
+wrong about them.</p>
+<div class="bar">{bars}</div>
+<div class="assume">Every number on these pages is produced by
+<code>make reproduce</code>; none is typed in by hand. Rupee figures use stated
+assumptions, because the dataset ships no monetary amounts, so they rank options
+against each other and mean nothing in absolute terms.</div>
+
+<div class="card">
+<h2>If you have ten minutes</h2>
+<ol>
+<li><a href="https://github.com/adarshcod30/Orbweaver#the-problem">The problem</a>
+ — why a ring is invisible to a per-order scorer.</li>
+<li><a href="case-files.html">The case files</a> — what an analyst is actually
+ handed, one card per ring, with the evidence and the recommended action.</li>
+<li><a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md">What
+ broke</a> — the honest log. It is the file I would read first.</li>
+<li><a href="results.md">The full results</a> — nine investigations, three of
+ which came back negative and are reported as such.</li>
+</ol>
+</div>
+
+<div class="card">
+<h2>Pages here</h2>
+<ul>
+<li><a href="case-files.html">case-files.html</a> — the review queue as a
+ standalone page, no server needed.</li>
+<li><a href="results.md">results.md</a> — every table and figure.</li>
+<li><a href="architecture.md">architecture.md</a> · <a href="data.md">data.md</a>
+ · <a href="design-decisions.md">design-decisions.md</a>
+ · <a href="threat-model.md">threat-model.md</a></li>
+</ul>
+{f'<p class="note">The repository also carries a {mb} demo bundle, so the live console runs from a clone with no dataset at all.</p>' if mb else ''}
+</div>
+
+<p class="sub">Built for the Razorpay AI Buildathon, Track 02 ·
+<a href="https://github.com/adarshcod30/Orbweaver">source</a></p>
+</div>""")
+    return dest
+
+
 def update_readme(cfg, score, ring, views) -> Path | None:
     """Fill the generated block in README.md.
 
@@ -1999,6 +2094,9 @@ def main() -> None:
 
     dest = write_results(cfg, score, ring, weights, figures)
     print(f"wrote {dest}")
+    idx = write_index(cfg, ring, score)
+    if idx:
+        print(f"wrote {idx}")
     vj = proc / "view_comparison.json"
     rd = update_readme(cfg, score, ring,
                        json.loads(vj.read_text()) if vj.exists() else None)

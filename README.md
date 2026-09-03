@@ -5,6 +5,19 @@
 Finding coordinated promotion-abuse rings in transaction graphs — and reporting
 what it costs to be wrong about them.
 
+[![tests](https://github.com/adarshcod30/Orbweaver/actions/workflows/tests.yml/badge.svg)](https://github.com/adarshcod30/Orbweaver/actions/workflows/tests.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**If you have ten minutes:** [the problem](#the-problem) ·
+[the full results](docs/results.md), nine investigations of which three came
+back negative · [what broke](FAILURES.md), which is the file I would read
+first · and `docs/case-files.html`, the page an analyst is actually handed —
+open it in a browser, or run the console below.
+
+**To run it without downloading anything:** `pip install -r requirements-demo.txt
+&& make console`. The repository carries a half-megabyte bundle of computed
+results and the console serves it when there is no processed data.
+
 ---
 
 ## The problem
@@ -81,27 +94,62 @@ every time.
 
 <!-- results:end -->
 
-The findings I would lead with:
+The nine findings, including the three that did not work:
 
-- **Dense is not the same as fraudulent.** On the raw graph, the densest
-  subgraphs are large ordinary communities — people who happened to use the
-  same promotion — and ring precision comes out *below* the base rate.
-  Filtering to suspicious accounts first, then looking for dense structure
-  inside that region, is what makes the output useful. That ordering is the
-  single most important thing I learned building this.
-- **The relation that dominates the graph carries the weakest signal.**
-  Promotion edges are 70% of the graph at 1.76× fraud lift; location edges are
-  16% at 3.71×. Weighting relations by measured evidential value, fitted on
-  training accounts only, follows directly.
-- **The account scorer is honest but not strong** — AUPRC 1.69× random on
-  held-out accounts, with no memorisation gap between held-out and
-  training-pool accounts, which is what the account-disjoint split was built to
-  detect.
-- **The first finding replicates on two unrelated datasets.** Run unchanged on
-  Amazon reviewers and YelpChi reviews, the unpruned extractor again lands
-  below the base rate — on YelpChi at *exactly zero*, 25 rings and 1,914
-  accounts without a single fraudster — while pruning first reaches 14.3× and
-  6.9×. Three datasets, three platforms, same conclusion.
+1. **Dense is not the same as fraudulent.** On the raw graph the densest
+   subgraphs are large ordinary communities — people who happened to use the
+   same promotion — and ring precision comes out *below* the base rate.
+   Filtering to suspicious accounts first, then looking for dense structure
+   inside that region, is what makes the output useful. That ordering is the
+   single most important thing I learned building this, and it replicates on
+   two unrelated datasets: run unchanged on Amazon reviewers and YelpChi
+   reviews, the unpruned extractor again lands below the base rate — on
+   YelpChi at *exactly zero*, 25 rings and 1,914 accounts without a single
+   fraudster — while pruning first reaches 14.3× and 6.9×.
+2. **The relation that dominates the graph carries the weakest signal.**
+   Promotion edges are 70% of the graph at 1.76× fraud lift; location edges are
+   16% at 3.71×. Weighting relations by measured evidential value, fitted on
+   training accounts only, follows directly.
+3. **The link only a platform can see is worth measuring, not assuming.** On
+   YelpChi, removing the one relation that spans businesses costs two to four
+   points of ring precision at equal review capacity. I had argued the
+   aggregator's advantage with simulated edges before this; now it is a
+   measurement on real labels, and the simulated version is a sensitivity
+   check.
+4. **One night of data is worth nothing, and rings do not survive the night.**
+   Replaying the window a night at a time, a single night puts the queue at the
+   base rate — chance — and it takes four nights to reach the headline number.
+   Worse, no ring found on the last night had a recognisable predecessor, so a
+   case could not be tracked at all. **Anchoring the extraction fixed that**:
+   44% of the final rings now have a case open the night before against 0% for
+   the global extractor, at a cost of 0.0125 precision.
+5. **The crudest baseline beat the model I built to replace it.** A ring-level
+   confidence model lost to simply ranking by the mean score of a ring's
+   members, at every depth. The reason is visible in the training data: 90.6%
+   of the candidate rings are already fraudulent, so there is almost nothing
+   for a ring-level model to separate.
+6. **Ring history does not transfer to the next window.** Feeding "was this
+   account in a ring last window" back into the account score moves held-out
+   AUPRC by +0.0011. The ceiling was set before the model ran: the feature is
+   non-zero for 0.15% of held-out accounts. Rings are window-specific objects —
+   the accounts recur, the groupings do not.
+7. **Behaviour edges raise the price of fragmentation without defeating it.**
+   Splitting a ring into cells of three takes precision from 0.73 to 0.45.
+   Mutual nearest-neighbour edges in behaviour space — which an attacker cannot
+   cut by severing shared entities — recover +0.0237 of that, and nothing at
+   all at cells of twenty. Fragmentation remains the attack that works.
+8. **The method transfers to a payment processor's graph, and its weakest point
+   moves with it.** On IEEE-CIS the same pipeline reaches 0.5079 ring precision
+   at 18.1× the base rate. But the apartment-building analogue of the hostel
+   test touches 4 of 7 clusters, against 2 of 2,446 here, because the billing
+   address is at once the most informative relation and the thing that
+   legitimately ties every card in a building together.
+9. **The analyst is not the bottleneck I built for.** Pricing review against
+   auto-hold under a fixed budget, the fraud stopped does not change between
+   thirty analyst-minutes a night and two hundred and forty — auto-holding
+   already stops it. What analyst time buys is a 39% fall in legitimate value
+   harmed. On these assumptions the reviewer is a false-positive control rather
+   than a detector, which is not what I expected.
 
 ## What these numbers do not prove
 

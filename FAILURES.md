@@ -9,9 +9,8 @@ Six of these are worth reading before the rest:
 - [2 September — a column that was full of values it did not have](#2-september--a-column-that-was-full-of-values-it-did-not-have) — a line ending made an empty column look 100% present
 - [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
 - [3 September — `make reproduce` wrote a third of the report before the work existed](#3-september--make-reproduce-wrote-a-third-of-the-report-before-the-work-existed) — a green run for three and a half hours that produced the wrong file
-- [3 September — I measured two systems at two different budgets and read the sign backwards](#3-september--i-measured-two-systems-at-two-different-budgets-and-read-the-sign-backwards) — an unfair comparison that reversed the project's own argument
-- [3 September — the model I built lost to the baseline I almost did not run](#3-september--the-model-i-built-lost-to-the-baseline-i-almost-did-not-run) — the crudest ranking beat the trained one, and stayed in
-
+- [3 September — I set up the same unfair comparison twice](#3-september--i-set-up-the-same-unfair-comparison-twice) — two systems measured under conditions that were not equal, twice in two days
+- [3 September — I built a review queue for a reviewer who turns out not to be the bottleneck](#3-september--i-built-a-review-queue-for-a-reviewer-who-turns-out-not-to-be-the-bottleneck) — I optimised a budget without checking it was the binding constraint
 ---
 
 ## 2 September — the first version of this project was the wrong project
@@ -1058,3 +1057,77 @@ before checking whether the budget was the binding constraint. It was not. The
 measurement was still worth making — it produced the most useful sentence in the
 section — but I got there by building the whole thing and reading the output,
 not by thinking about it first.
+
+---
+
+## 3 September — I shipped a demo that could not possibly work
+
+**What broke:** the demo bundle, on its first push. The whole point of it is
+that someone can clone the repository and run the console without the four
+gigabyte dataset, and the version I pushed was missing `accounts.parquet` —
+the table holding every account the console can answer for. Without it the
+thing does not start.
+
+**What I believed:** that six passing tests, one of which copies the repository
+into a temporary directory and boots the console from the bundle alone, meant
+the bundle worked.
+
+**Why that was wrong:** `.gitignore` has a blanket `*.parquet` rule, sensibly,
+because the pipeline writes hundreds of megabytes of parquet that must never be
+committed. It caught the bundle's account table too. Every test still passed,
+because the file was sitting in my working tree — untracked, invisible to git,
+and perfectly readable by anything running on my machine. The copy-to-a-temp-
+directory test copied the *working tree*, not the commit.
+
+**What fixed it:** a one-line exception, narrow enough that `data/raw` and
+`data/processed` keep their own directory rules and nothing else loosens. Then
+a real `git clone` from GitHub into an empty directory and booting the console
+there, which is the only check that would have caught this. And a test that
+compares the files on disk against `git ls-files`, so the next file added to
+the bundle cannot go missing the same way.
+
+**What I take from it:** this is the third time in two days that a check of mine
+passed because it ran against my machine's state rather than against what
+someone else would get — the report that was generated before the stages it
+described, the comparison that gave one side more nights than the other, and
+now this. The pattern is always the same: I verify the thing I built using the
+context I built it in. The fix that actually works is not a better test, it is
+a test that starts from a clone.
+
+---
+
+## 3 September — a display cap quietly deleted a feature
+
+**What broke:** the recommended action disappeared from every card on the
+case-file page, silently. No error, no empty block — the page simply rendered
+without the thing I had just built, and the numbers that were still there were
+subtly wrong.
+
+**What I believed:** that `members_sample` in the ring report was the ring's
+membership. The name should have warned me.
+
+**Why that was wrong:** it is truncated to twenty-five accounts, for display.
+Eight of the ten rings on the page are larger than that. The policy code that
+computes each card's recommendation refuses to run on a partial ring — deliberately,
+because pricing a review against a fraction of its members is meaningless — and
+returns nothing rather than something wrong. That was the right call and it
+made the failure invisible: a function that correctly declines produces the
+same page as a function that was never called.
+
+Worse, the mean member score I had just added to each card *did* compute, over
+whatever fraction of the ring happened to be in the sample. A card reading
+"mean member score 0.906" was the mean of twenty-five of forty-three accounts,
+presented as a property of the ring.
+
+**What fixed it:** storing the full membership in the report — rings are capped
+at 500 members, so this costs nothing — and making every consumer prefer it.
+Three of them were reading the sample: the case cards, the demo bundle's ring
+membership, and the console's own index, which meant `/check` was telling every
+member past the twenty-fifth that it was in no ring at all. A test now asserts
+that a stored ring's membership matches its own size.
+
+**What I take from it:** the failure mode worth naming is the silent decline. My
+code was careful enough to refuse bad input and not careful enough to say so,
+which is the worst combination — it turns a loud bug into a missing feature that
+only gets noticed if someone looks at the page. Where a function guards its
+inputs, it should be able to explain why it returned nothing.

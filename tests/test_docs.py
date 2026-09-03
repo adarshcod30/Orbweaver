@@ -187,3 +187,20 @@ def test_the_demo_section_is_present_when_the_bundle_is():
     if results.exists():
         assert DEMO_SECTION in results.read_text(), \
             "the bundle is built but docs/results.md does not describe it"
+
+
+def test_case_files_carry_their_whole_membership():
+    """The case cards' mean score, the review policy's economics and the demo
+    bundle's ring membership are all computed from a ring's members. When the
+    report stored only the first twenty-five, the mean was taken over part of
+    the ring and the recommendations silently vanished from the page."""
+    import json
+
+    proc = CFG.abs_path(CFG.paths.processed)
+    for name in ("ring_report.json", "ring_report_deep.json"):
+        p = proc / name
+        if not p.exists():
+            continue
+        for c in json.loads(p.read_text()).get("case_files", []):
+            assert len(c.get("members", [])) == c["size"], \
+                f"{name} ring #{c.get('rank')} stores {len(c.get('members', []))} of {c['size']} members"

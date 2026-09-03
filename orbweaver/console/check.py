@@ -45,7 +45,9 @@ class CheckIndex:
                 continue
             payload = json.loads(p.read_text())
             for case in payload.get("case_files", []):
-                members = np.asarray(case.get("members_sample", []), dtype=np.int64)
+                # Full membership; the sample is only for display.
+                members = np.asarray(case.get("members") or case.get("members_sample", []),
+                                     dtype=np.int64)
                 if members.size == 0:
                     continue
                 i = len(self.rings)

@@ -9,9 +9,9 @@
     "hostel_test.json": 965,
     "policy.json": 58885,
     "replay.json": 16942,
-    "rings.json": 56120
+    "rings.json": 56754
   },
-  "bytes": 532909,
+  "bytes": 533543,
   "limit_bytes": 41943040,
   "note": "Precomputed results, so anyone can look at the console without the 4 GB dataset. The graph itself is not in here - /check serves stored neighbour counts rather than computing a ring live."
 }

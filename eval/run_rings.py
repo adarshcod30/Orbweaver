@@ -154,6 +154,12 @@ def main() -> None:
             ev["labels"] = {"fraud": int((lab == 1).sum()),
                             "normal": int((lab == 0).sum()),
                             "unlabelled": int((lab == -1).sum())}
+            # The whole membership, not a sample of it. A ring is capped at
+            # k_max members so this stays small, and everything downstream -
+            # the case cards' mean member score, the review policy's
+            # economics, the demo bundle - is wrong or silently disabled
+            # when it only has the first twenty-five.
+            ev["members"] = r.members.tolist()
             ev["members_sample"] = r.members[:25].tolist()
             top = ev["shared_entities"][0] if ev["shared_entities"] else None
             ev["evidence_strength"] = round(

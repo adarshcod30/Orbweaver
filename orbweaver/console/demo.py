@@ -119,7 +119,10 @@ def build(cfg: Config | None = None) -> dict:
         payload = json.loads(p.read_text())
         rings_payload = payload
         for i, case in enumerate(payload.get("case_files", [])):
-            m = np.asarray(case.get("members_sample", []), dtype=np.int64)
+            # The full membership, not the display sample - otherwise every
+            # member past the twenty-fifth is told it is in no ring.
+            m = np.asarray(case.get("members") or case.get("members_sample", []),
+                           dtype=np.int64)
             if m.size:
                 ring_of[m] = i
         break

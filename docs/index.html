@@ -1,0 +1,86 @@
+<!doctype html><meta charset="utf-8">
+<title>Orbweaver — finding coordinated abuse rings</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--ink:#1c1c1c;--muted:#6b6b6b;--line:#e6e6e6;--accent:#c2410c;--bg:#fbfaf9;
+--ok:#166534;--warn:#a16207}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:var(--muted);margin:0 0 28px}
+.bar{display:flex;flex-wrap:wrap;gap:28px;padding:18px 20px;background:#fff;
+border:1px solid var(--line);border-radius:10px;margin-bottom:28px}
+.stat b{display:block;font-size:20px;letter-spacing:-.01em}
+.stat span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;
+padding:20px 22px;margin-bottom:16px}
+.card h2{font-size:17px;margin:0 0 2px;letter-spacing:-.01em}
+.card .meta{color:var(--muted);font-size:13px;margin-bottom:14px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;
+text-transform:uppercase;letter-spacing:.06em;padding:6px 10px 6px 0;
+border-bottom:1px solid var(--line)}
+td{padding:7px 10px 7px 0;border-bottom:1px solid #f2f2f2}
+td.num,th.num{text-align:right}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11.5px;
+font-weight:600;margin-right:6px}
+.tag.f{background:#fef2f2;color:#b91c1c}
+.tag.n{background:#f0fdf4;color:var(--ok)}
+.tag.u{background:#f5f5f4;color:var(--muted)}
+.rare{color:var(--accent);font-weight:600}
+.act{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;margin:14px 0 2px;
+padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.act .verb{font-weight:700;letter-spacing:-.01em}
+.act .verb.review{color:var(--accent)}
+.act .verb.hold{color:var(--warn)}
+.act .verb.ignore{color:var(--muted)}
+.act .why{color:var(--muted);font-size:12.5px}
+.note{color:var(--muted);font-size:12.5px;margin-top:12px;padding-top:12px;
+border-top:1px solid var(--line)}
+.assume{background:#fffbeb;border:1px solid #fde68a;color:#78350f;
+padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:24px}
+code{background:#f5f5f4;padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+<div class="wrap">
+<h1>Orbweaver</h1>
+<p class="sub"><em>The one that feels the whole web.</em> Finding coordinated
+promotion-abuse rings in transaction graphs — and reporting what it costs to be
+wrong about them.</p>
+<div class="bar"><div class="stat"><b>0.7292</b><span>share of a ring worth reviewing</span></div><div class="stat"><b>0.2242</b><span>base rate among labelled accounts</span></div><div class="stat"><b>0.371</b><span>real customers per fraudster caught</span></div><div class="stat"><b>44%</b><span>rings with a case open the night before</span></div><div class="stat"><b>₹67,900</b><span>stopped by one analyst, one hour a night</span></div></div>
+<div class="assume">Every number on these pages is produced by
+<code>make reproduce</code>; none is typed in by hand. Rupee figures use stated
+assumptions, because the dataset ships no monetary amounts, so they rank options
+against each other and mean nothing in absolute terms.</div>
+
+<div class="card">
+<h2>If you have ten minutes</h2>
+<ol>
+<li><a href="https://github.com/adarshcod30/Orbweaver#the-problem">The problem</a>
+ — why a ring is invisible to a per-order scorer.</li>
+<li><a href="case-files.html">The case files</a> — what an analyst is actually
+ handed, one card per ring, with the evidence and the recommended action.</li>
+<li><a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md">What
+ broke</a> — the honest log. It is the file I would read first.</li>
+<li><a href="results.md">The full results</a> — nine investigations, three of
+ which came back negative and are reported as such.</li>
+</ol>
+</div>
+
+<div class="card">
+<h2>Pages here</h2>
+<ul>
+<li><a href="case-files.html">case-files.html</a> — the review queue as a
+ standalone page, no server needed.</li>
+<li><a href="results.md">results.md</a> — every table and figure.</li>
+<li><a href="architecture.md">architecture.md</a> · <a href="data.md">data.md</a>
+ · <a href="design-decisions.md">design-decisions.md</a>
+ · <a href="threat-model.md">threat-model.md</a></li>
+</ul>
+<p class="note">The repository also carries a 0.53 MB demo bundle, so the live console runs from a clone with no dataset at all.</p>
+</div>
+
+<p class="sub">Built for the Razorpay AI Buildathon, Track 02 ·
+<a href="https://github.com/adarshcod30/Orbweaver">source</a></p>
+</div>
