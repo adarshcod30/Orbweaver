@@ -164,7 +164,14 @@ covered, what is not, and how an adversary would evade it.
 The relation this dataset does not have is a shared payment instrument across
 merchants. That edge cannot be built by any single platform. A payment
 aggregator sees the same card token, UPI VPA and bank account across every
-merchant it serves, and is the only party that could test whether it helps.
+merchant it serves, and is the only party that could build it.
+
+What a cross-business link is worth is no longer a guess. On YelpChi, removing
+the one relation that spans businesses costs between two and four points of
+ring precision at equal review capacity. That is a different relation on a
+different kind of platform, so it is evidence about the shape of the argument
+rather than a forecast for payments — but it is measured on real labels
+instead of assumed.
 
 ## Data and citations
 

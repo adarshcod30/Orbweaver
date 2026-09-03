@@ -54,3 +54,42 @@ def test_results_figures_exist():
         return
     for rel in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", results.read_text()):
         assert (results.parent / rel).exists(), f"missing figure: {rel}"
+
+
+# Each of these sections is written only when its artefact is on disk, so an
+# artefact with no section means docs/results.md was generated before that
+# stage ran. That is not hypothetical: `report` was named as a prerequisite of
+# both `reproduce-core` and `reproduce`, make built it once and early, and a
+# full run produced a results file missing six sections.
+ARTEFACT_SECTIONS = {
+    "merchant_view.json": "## The relation only the platform can see, measured",
+    "replay.json": "## Watching the window day by day",
+    "ring_scorer.json": "## Ranking rings by a learned confidence",
+    "ring_context.json": "## Feeding the web back into the strand",
+    "twins.json": "## Edges an attacker cannot cut",
+    "ieee_cis.json": "## A payment processor's graph",
+}
+
+
+def test_results_covers_every_artefact_on_disk():
+    results = ROOT / "docs" / "results.md"
+    if not results.exists():
+        return
+    text = results.read_text()
+    proc = CFG.abs_path(CFG.paths.processed)
+    stale = [name for name, heading in ARTEFACT_SECTIONS.items()
+             if (proc / name).exists() and heading not in text]
+    assert not stale, (
+        "docs/results.md predates these artefacts, so it was written before "
+        f"their stages ran: {stale}")
+
+
+def test_report_runs_after_every_stage_it_reports_on():
+    """The regression guard for the bug above, at the source rather than the
+    symptom: `reproduce` must not name `report` as a prerequisite."""
+    line = next(ln for ln in (ROOT / "Makefile").read_text().splitlines()
+                if ln.startswith("reproduce:"))
+    prereqs = line.split(":", 1)[1].split("##")[0].split()
+    assert "report" not in prereqs, (
+        "make builds a target once per run, so `report` here is a no-op and "
+        "the report is written before the later stages have run")

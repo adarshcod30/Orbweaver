@@ -119,7 +119,14 @@ check:  ## tests plus the pre-push check on committed prose
 # Every stage from the raw files to the numbers in the documentation.
 reproduce-core: schema data graph windows-weighted test score sage rings rings-deep hostel views adversarial overlay generalise report  ## the core pipeline on its own, about 50 min
 
-reproduce: reproduce-core merchant-view replay ring-scorer ring-context twins ieee-cis report  ## everything, end to end
+# `report` is a recipe step here, not a prerequisite. It is already a
+# prerequisite of reproduce-core, and make builds any target at most once per
+# run, so naming it again in this list is a silent no-op: the report gets
+# written before the six stages above it have produced anything, and the
+# sections that depend on them are quietly missing. Running it twice costs a
+# couple of minutes and is worth it.
+reproduce: reproduce-core merchant-view replay ring-scorer ring-context twins ieee-cis  ## everything, end to end
+	$(PY) -u -m eval.report
 	@echo
 	@echo "reproduce complete. See docs/results.md"
 

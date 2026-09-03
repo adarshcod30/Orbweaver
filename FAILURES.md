@@ -8,7 +8,7 @@ Six of these are worth reading before the rest:
 - [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
 - [2 September — a column that was full of values it did not have](#2-september--a-column-that-was-full-of-values-it-did-not-have) — a line ending made an empty column look 100% present
 - [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
-- [2 September — the subsample quietly destroyed the rings](#2-september--the-subsample-quietly-destroyed-the-rings) — shrinking the graph to fit memory removed the thing I was looking for
+- [3 September — `make reproduce` wrote a third of the report before the work existed](#3-september--make-reproduce-wrote-a-third-of-the-report-before-the-work-existed) — a green run for three and a half hours that produced the wrong file
 - [3 September — I measured two systems at two different budgets and read the sign backwards](#3-september--i-measured-two-systems-at-two-different-budgets-and-read-the-sign-backwards) — an unfair comparison that reversed the project's own argument
 - [3 September — the model I built lost to the baseline I almost did not run](#3-september--the-model-i-built-lost-to-the-baseline-i-almost-did-not-run) — the crudest ranking beat the trained one, and stayed in
 
@@ -867,3 +867,64 @@ dataset with more buildings in it than this one has.
 relation set where the most predictive edge is also the most innocently shared
 one would need an address-level exclusion list before I would run it against
 real customers, and I would rather write that down than let 18× stand on its own.
+
+---
+
+## 3 September — `make reproduce` wrote a third of the report before the work existed
+
+**What broke:** I cloned the repository into an empty directory, emptied
+`data/processed`, and ran `make reproduce` the way a reader would. Twenty-six
+stages, three and a half hours, exit code 0, every stage green. Then I diffed
+the `docs/results.md` it produced against the one in the repository: 195 lines
+short. Six entire sections missing — every section I had added in the last two
+days of work. The README's generated table was missing its last six rows, and
+one figure had silently lost a curve.
+
+**What I believed:** that a green `make reproduce` meant the repository
+regenerates itself, and that because `report` was written last in the list, it
+ran last:
+
+```make
+reproduce-core: schema data graph ... generalise report
+reproduce: reproduce-core merchant-view replay ring-scorer ... ieee-cis report
+```
+
+**Why that was wrong:** make builds any target at most once per invocation.
+`report` was already a prerequisite of `reproduce-core`, and `reproduce-core`
+is the *first* prerequisite of `reproduce` — so the report was generated in the
+middle of the run, before the six stages named after it had produced anything
+at all. Naming it again at the end was a silent no-op. No error, no warning;
+make had satisfied that target and moved on. The stages themselves ran fine and
+wrote their artefacts. Nothing read them.
+
+**Why I did not notice for two days:** because I ran `python3 -m eval.report`
+by hand after finishing each piece of work, so my own copy of the file was
+always current, and the committed `docs/results.md` was correct. The file was
+right. The command that is supposed to produce the file had never once produced
+it. Every check I had been running used my history, not a reader's.
+
+**What fixed it:** `report` is now a recipe step of `reproduce` rather than a
+prerequisite, so it always runs after everything else. It runs twice in a full
+pass, which costs about two minutes, and that is the right trade for a
+guarantee that the report describes the run that just happened.
+
+**Two tests, because one of them is not enough.** The first checks the symptom:
+for every artefact on disk, the section that reports it must be present in
+`docs/results.md`. The second checks the cause: `reproduce` must not name
+`report` as a prerequisite. I put the old line back and confirmed the second
+test fails, because a regression test that passes against the broken code is
+not a test.
+
+**What I take from it:** I had "clone it fresh and run it" written down as the
+last thing to do, and I had been treating it as a formality — the box you tick
+once the real work is finished. It found the worst bug in this project. It
+found it because it was the only check that ran the command a reader runs,
+rather than the commands I had got into the habit of running. Twenty-six green
+stages and an exit code of 0 told me nothing whatsoever about whether the
+output was correct.
+
+The rest of the diff, once the ordering was fixed, was six lines: the `/check`
+latencies and the per-night seconds in the replay. Those are wall-clock
+measurements of the machine, they cannot reproduce byte for byte, and
+`docs/results.md` now says so at the top rather than leaving a reader to
+discover it in a diff.
