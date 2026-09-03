@@ -133,3 +133,19 @@ def test_the_console_starts_from_the_bundle_alone():
         assert out.stdout.startswith("OK"), out.stdout
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@needs_bundle
+def test_every_bundle_file_is_actually_committed():
+    """The bundle only works from a clone if git is carrying it. The blanket
+    `*.parquet` rule in .gitignore silently dropped the account table on the
+    first attempt, and every local test still passed because the file was
+    sitting there untracked."""
+    import subprocess
+
+    tracked = subprocess.run(["git", "ls-files", D.BUNDLE_DIR],
+                             cwd=ROOT, capture_output=True, text=True, check=True)
+    have = {line.split("/")[-1] for line in tracked.stdout.split()}
+    on_disk = {f.name for f in BUNDLE.iterdir() if f.is_file()}
+    missing = on_disk - have
+    assert not missing, f"the bundle needs these but git is not carrying them: {sorted(missing)}"
