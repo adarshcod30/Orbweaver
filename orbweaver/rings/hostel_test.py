@@ -44,6 +44,8 @@ def find_colocated_clusters(cfg: Config, labels: np.ndarray,
     uid = t["user_id"].to_numpy()
     keep = ~np.isnan(ent)
     ent, uid = ent[keep].astype(np.int64), uid[keep]
+    if ent.size == 0:
+        return []
 
     order = np.lexsort((uid, ent))
     ent, uid = ent[order], uid[order]
@@ -73,15 +75,32 @@ def find_colocated_clusters(cfg: Config, labels: np.ndarray,
     return out
 
 
-def run_hostel_test(rings, cfg: Config | None = None) -> dict:
-    """How does the pipeline treat legitimate co-located groups?"""
+RELATION_LABELS = {"r1": "order location", "r3": "delivery record",
+                   "r6": "promotion", "r7": "coupon type", "r8": "sales stimulation"}
+
+
+def run_hostel_test(rings, cfg: Config | None = None, relation: str = "r1",
+                    clusters: list[dict] | None = None) -> dict:
+    """How does the pipeline treat legitimate co-located groups?
+
+    `relation` generalises the test beyond location: any of the five relations
+    can hold a group that looks coordinated without being one (a promotion
+    used by a real group-deal cohort is the r6 analogue of a hostel's address).
+
+    Which co-located clusters exist depends only on `relation`, not on which
+    rings are being checked against them - `clusters` lets a caller comparing
+    several sets of rings against the same relation (see
+    `run_hostel_test_all_relations`) find them once and reuse the list, rather
+    than re-scanning the order file per arm.
+    """
     cfg = cfg or load_config()
     proc = cfg.abs_path(cfg.paths.processed)
     labels = pq.read_table(proc / "nodes.parquet")["label"].to_numpy()
 
-    clusters = find_colocated_clusters(cfg, labels)
+    if clusters is None:
+        clusters = find_colocated_clusters(cfg, labels, relation=relation)
     if not clusters:
-        return {"clusters_found": 0,
+        return {"clusters_found": 0, "relation": relation,
                 "note": "no co-located normal clusters matched the criteria"}
 
     in_ring = np.zeros(labels.size, dtype=bool)
@@ -97,19 +116,42 @@ def run_hostel_test(rings, cfg: Config | None = None) -> dict:
     # Relation diversity: how many different kinds of thing a group shares.
     # A hostel shares an address and little else; a ring tends to share the
     # address AND the promotion AND the coupon.
+    #
+    # Vectorised as one pass over the edge list rather than one masked scan
+    # per cluster: with thousands of qualifying clusters on the denser
+    # relations (13,546 for r6), a per-cluster O(edges) scan is a
+    # cluster-count multiple of a full edge-array pass each time it runs, and
+    # this function runs ten times over from `make lockstep`. Tagging every
+    # account with which cluster (if any) it belongs to, then keeping only
+    # edges where both ends carry the same cluster tag, does the same
+    # selection in one pass regardless of how many clusters there are.
+    cluster_of = np.full(labels.size, -1, dtype=np.int32)
+    for i, c in enumerate(clusters):
+        cluster_of[c["members"]] = i
+
     edges = pq.read_table(proc / "edges_week2_late.parquet",
                           columns=["src", "dst", "relation_mask"])
     esrc, edst = edges["src"].to_numpy(), edges["dst"].to_numpy()
     emask = edges["relation_mask"].to_numpy()
 
+    cs, cd = cluster_of[esrc], cluster_of[edst]
+    same = (cs == cd) & (cs >= 0)
+    ce, cmask = cs[same], emask[same]
+    order = np.argsort(ce, kind="stable")
+    ce, cmask = ce[order], cmask[order]
+    diversity_by_cluster = np.zeros(len(clusters), dtype=np.int64)
+    edges_by_cluster = np.zeros(len(clusters), dtype=np.int64)
+    if ce.size:
+        starts = np.flatnonzero(np.concatenate(([True], ce[1:] != ce[:-1])))
+        or_by_group = np.bitwise_or.reduceat(cmask.astype(np.int64), starts)
+        count_by_group = np.diff(np.append(starts, ce.size))
+        diversity_by_cluster[ce[starts]] = or_by_group
+        edges_by_cluster[ce[starts]] = count_by_group
+
     flagged, clean = [], []
-    for c in clusters:
+    for i, c in enumerate(clusters):
         m = c["members"]
-        inside = np.zeros(labels.size, dtype=bool)
-        inside[m] = True
-        sel = inside[esrc] & inside[edst]
-        mask_or = int(np.bitwise_or.reduce(emask[sel])) if sel.any() else 0
-        diversity = bin(mask_or).count("1")
+        diversity = bin(int(diversity_by_cluster[i])).count("1")
         rec = {
             "entity": c["entity"], "size": c["size"],
             "labelled": c["labelled"], "normal_share": c["normal_share"],
@@ -117,7 +159,7 @@ def run_hostel_test(rings, cfg: Config | None = None) -> dict:
             "share_in_a_ring": round(float(in_ring[m].mean()), 4),
             "mean_score": round(float(scores[m].mean()), 4),
             "max_score": round(float(scores[m].max()), 4),
-            "internal_edges": int(sel.sum()),
+            "internal_edges": int(edges_by_cluster[i]),
             "relation_diversity": diversity,
         }
         (flagged if rec["members_in_a_ring"] > 0 else clean).append(rec)
@@ -135,7 +177,7 @@ def run_hostel_test(rings, cfg: Config | None = None) -> dict:
             "min_cluster_size": MIN_CLUSTER,
             "max_cluster_size": cfg.graph.n_max,
             "min_normal_share_of_labelled": MIN_NORMAL_SHARE,
-            "relation": "r1 (order location)",
+            "relation": f"{relation} ({RELATION_LABELS.get(relation, relation)})",
         },
         "what_separates_them": {
             "flagged_mean_score": avg(flagged, "mean_score"),
@@ -186,3 +228,25 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def run_hostel_test_all_relations(cfg: Config, rings_by_arm: dict[str, list]) -> dict:
+    """The crowd test on all five relations, for each graph arm supplied.
+
+    `rings_by_arm` is e.g. `{"standard": [...], "lockstep": [...]}` - whatever
+    arms the caller extracted rings for. Every relation is run against every
+    arm at the SAME criteria (`MIN_CLUSTER`, `MIN_NORMAL_SHARE`), so the only
+    thing that differs between two rows for the same relation is which rings
+    were used to decide what counts as "touched". Which clusters exist is
+    found once per relation and reused across every arm, since it does not
+    depend on the rings at all.
+    """
+    proc = cfg.abs_path(cfg.paths.processed)
+    labels = pq.read_table(proc / "nodes.parquet")["label"].to_numpy()
+
+    out: dict[str, dict] = {}
+    for rel in cfg.data.buildable_relations:
+        clusters = find_colocated_clusters(cfg, labels, relation=rel)
+        out[rel] = {arm: run_hostel_test(rings, cfg, relation=rel, clusters=clusters)
+                   for arm, rings in rings_by_arm.items()}
+    return out

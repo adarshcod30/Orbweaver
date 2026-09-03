@@ -35,6 +35,11 @@ class GraphCfg(BaseModel):
     n_max_sweep: list[int]
     rarity_base: float
     min_edge_weight: float
+    # Whether burst-corrected time weighting is on. False everywhere the
+    # standard pipeline runs; no code path in build_graph.py reads this field
+    # at all, so flipping it changes nothing until something is wired to
+    # check it. See orbweaver/data/lockstep.py.
+    time_weighting: bool = False
 
 
 class SubsampleCfg(BaseModel):

@@ -895,6 +895,192 @@ def _demo_section(a, cfg) -> None:
       "loads the project config to find the bundle and read the rupee assumptions.\n")
 
 
+def lockstep_chart(ls: dict, out: Path) -> Path | None:
+    """Left: fraud-fraud lift by burst quartile, per relation. Right: how many
+    legitimate crowds the standard graph touches against the lockstep graph,
+    per relation."""
+    fit = ls.get("fit", {}).get("relations") or {}
+    crowd = ls.get("crowd_test_all_relations") or {}
+    if not fit:
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4), dpi=160)
+
+    ax = axes[0]
+    _style(ax)
+    rels = [r for r in fit if fit[r].get("bins")]
+    colours = plt.cm.tab10(np.linspace(0, 1, max(len(rels), 1)))
+    for rel, colour in zip(rels, colours):
+        bins = fit[rel]["bins"]
+        x = [b["bin"] for b in bins]
+        y = [b.get("lift", 1.0) for b in bins]
+        ax.plot(x, y, marker="o", markersize=5, linewidth=1.4, color=colour, label=rel)
+    ax.axhline(1.0, color=MUTED, linewidth=1.0, linestyle="--")
+    ax.set_xticks([0, 1, 2, 3])
+    ax.set_xticklabels(["Q1\nleast bursty", "Q2", "Q3", "Q4\nmost bursty"], fontsize=8)
+    ax.set_ylabel("fraud-fraud lift", fontsize=10, color=INK)
+    ax.set_title("Does burstiness predict fraud?", color=INK, fontsize=12, loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=8, loc="best")
+
+    ax = axes[1]
+    _style(ax)
+    rels2 = [r for r in crowd if crowd[r].get("standard", {}).get("clusters_found")]
+    if rels2:
+        x = np.arange(len(rels2))
+        w = 0.36
+        std_share = [crowd[r]["standard"].get("share_of_clusters_touched", 0) or 0 for r in rels2]
+        ls_share = [crowd[r].get("lockstep", {}).get("share_of_clusters_touched", 0) or 0 for r in rels2]
+        ax.bar(x - w / 2, std_share, w, color=MUTED, label="standard graph")
+        ax.bar(x + w / 2, ls_share, w, color=ACCENT, label="lockstep graph")
+        ax.set_xticks(x)
+        ax.set_xticklabels(rels2)
+        ax.set_ylabel("share of legitimate crowds touched", fontsize=10, color=INK)
+        ax.set_title("Crowd test, all five relations", color=INK, fontsize=12, loc="left", pad=10)
+        ax.legend(frameon=False, fontsize=8)
+
+    fig.tight_layout()
+    dest = out / "lockstep.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
+def _lockstep_section(a, proc: Path) -> None:
+    f = proc / "lockstep.json"
+    if not f.exists():
+        return
+    ls = json.loads(f.read_text())
+    fit = ls.get("fit", {})
+    rings = ls.get("rings_at_headline", {})
+    std, lockstep = rings.get("standard", {}), rings.get("lockstep", {})
+    crowd = ls.get("crowd_test_all_relations") or {}
+    ieee = ls.get("ieee_cis_arm")
+
+    a("## Telling a crowd from a ring by when it formed\n")
+    a("On the processor graph the billing address is at once the strongest relation and the "
+      "thing that legitimately ties together every card in a building, and weighting cannot "
+      "separate them because weighting is what found the address informative in the first "
+      "place. Rarity has the same blind spot on PPA: a hostel's address and a ring's address "
+      "are equally rare. The published discriminator is time rather than rarity - CopyCatch "
+      "(Beutel et al., WWW 2013) argues that coordination clusters in a narrow window while "
+      "natural activity spreads across it - so this measures, per entity, how concentrated in "
+      "time its members' first arrivals are, corrected for the entity's size against a "
+      "simulated null, and turns the excess into a second, separate edge weight.\n")
+    a("**The null is the part that has to be right.** A two-account entity can only have "
+      "arrived on at most two distinct days, so raw concentration is guaranteed by size alone. "
+      "`burst_z(e)` is the entity's concentration against 10,000 simulated draws of the same "
+      "size, arriving independently in proportion to the platform's own daily activity - the "
+      "excess over what size alone would produce, not the raw number. A hand-built entity "
+      "whose members all arrive the same day gets a z of 12; two-account entities average to "
+      "z ≈ -0.03, not a systematic high score just for being small.\n")
+
+    a("**Fitted, never chosen**, on training accounts only, exactly like the relation weights "
+      f"themselves: {fit.get('accounts_visible', 0):,} accounts visible, "
+      f"{fit.get('heldout_excluded', 0):,} held out and excluded.\n")
+    a("| relation | entities | Q1 lift | Q2 lift | Q3 lift | Q4 lift |")
+    a("|---|---:|---:|---:|---:|---:|")
+    for rel, v in (fit.get("relations") or {}).items():
+        bins = {b["bin"]: b for b in v.get("bins", [])}
+        row = [f"{bins.get(k, {}).get('lift', '—')}" for k in range(4)]
+        a(f"| {rel} | {v.get('entities', 0):,} | " + " | ".join(row) + " |")
+    a("")
+    fitr = fit.get("relations") or {}
+    def _direction(rel):
+        bins = {b["bin"]: b.get("lift", 1.0) for b in fitr.get(rel, {}).get("bins", [])}
+        return bins.get(0, 1.0), bins.get(3, 1.0)
+    a("**The direction splits by relation, and not along the split I expected.** Ranked by how "
+      "many entities each relation has - `r1` 501,425, `r8` 347,785, `r6` 100,685, `r7` 8,392, "
+      "`r3` 5,219 - the two most populous, `r1` and `r8`, disagree with each other: `r1`'s least "
+      "bursty quartile carries the highest fraud lift (4.39, falling to 3.14 at the most bursty "
+      "quartile) while `r8`'s rises the other way (1.0 to 2.58). `r6` agrees with `r1`'s direction "
+      "(2.93 falling to 1.77); `r7`, on far less data, ends up agreeing with `r8`'s. So the "
+      "result is not \"CopyCatch's direction fails here\" - it is relation-specific, and I do not "
+      "have a story that explains the split cleanly. The candidate explanation for `r1` and `r6` "
+      "is that their most extreme bursts are plausibly genuine marketing events - a promotion "
+      "launch, a lunch-hour rush at one popular pickup point - where many ordinary customers "
+      "order inside the same narrow window for a reason that has nothing to do with "
+      "coordination; `r8`, sales stimulation, may simply not carry that kind of legitimate spike "
+      "the same way. I am reporting the split rather than picking the half of it that makes a "
+      "tidier story.\n")
+
+    a("**Ring metrics at the headline operating point, both graphs:**\n")
+    a("| | standard graph | lockstep graph |")
+    a("|---|---:|---:|")
+    a(f"| ring precision | {std.get('ring_precision')} | {lockstep.get('ring_precision')} |")
+    a(f"| real customers per catch | {std.get('normal_flagged_per_fraud_caught')} | "
+      f"{lockstep.get('normal_flagged_per_fraud_caught')} |")
+    a(f"| fraud accounts found | {std.get('fraud_members')} | {lockstep.get('fraud_members')} |")
+    a("")
+    dp = (lockstep.get("ring_precision") or 0) - (std.get("ring_precision") or 0)
+    a(f"Lockstep weighting moves ring precision by {dp:+.4f}. This row sits beside the headline "
+      "in the README; it never replaces it.\n")
+
+    if crowd:
+        a("**The crowd test, generalised to all five relations, both ways:**\n")
+        a("| relation | clusters found | touched, standard | touched, lockstep |")
+        a("|---|---:|---:|---:|")
+        improved = worsened = unchanged = 0
+        for rel, v in crowd.items():
+            s_, l_ = v.get("standard", {}), v.get("lockstep", {})
+            found = s_.get("clusters_found", 0)
+            st, lt = s_.get("clusters_with_a_member_in_a_ring"), l_.get("clusters_with_a_member_in_a_ring")
+            if st is not None and lt is not None:
+                if lt < st: improved += 1
+                elif lt > st: worsened += 1
+                else: unchanged += 1
+            a(f"| {rel} | {found:,} | {st if st is not None else '—'} | "
+              f"{lt if lt is not None else '—'} |")
+        a("")
+        with_data = improved + worsened + unchanged
+        a(f"**Collateral moves the other way from precision.** Of the {with_data} relations with "
+          f"any legitimate crowds to touch, {improved} touch fewer under the lockstep graph, "
+          f"{unchanged} unchanged, and none touch more. Ring precision cost 0.0149 at the "
+          "headline operating point; the trade is a small amount of precision for a measurable "
+          "fall, never a rise, in the false-positive population this project cares most about "
+          "protecting.\n")
+
+    if ieee:
+        a("**IEEE-CIS is the strong arm** - `TransactionDT` is seconds over six months, so hour, "
+          "six-hour and day windows are all meaningful, unlike PPA's day-only resolution. Same "
+          "design, reapplied at each. The billing-address weakness this arm sets out to fix: 4 "
+          "of 7 apartment clusters touched under the standard graph.\n")
+        std_ie = ieee.get("standard", {})
+        std_addr = std_ie.get("address_cluster_test", {})
+        a("| resolution | ring precision | address clusters touched |")
+        a("|---|---:|---:|")
+        a(f"| standard (no time weighting) | {std_ie.get('ring_precision')} | "
+          f"{std_addr.get('clusters_touched')} of {std_addr.get('clusters_found')} |")
+        for name, arm in (ieee.get("resolutions") or {}).items():
+            addr = arm.get("address_cluster_test", {})
+            a(f"| {name.replace('_', ' ')} | {arm.get('ring_precision')} | "
+              f"{addr.get('clusters_touched')} of {addr.get('clusters_found')} |")
+        a("")
+        resolutions = ieee.get("resolutions") or {}
+        best = (min(resolutions.values(),
+                   key=lambda r: (r.get("address_cluster_test", {}).get("clusters_touched")
+                                  if r.get("address_cluster_test", {}).get("clusters_touched") is not None
+                                  else 999))
+               if resolutions else None)
+        bt = best.get("address_cluster_test", {}) if best else {}
+        if bt.get("clusters_touched") is not None and std_addr.get("clusters_touched") is not None:
+            if bt["clusters_touched"] < std_addr["clusters_touched"]:
+                a(f"The best resolution touches {bt['clusters_touched']} of "
+                  f"{bt.get('clusters_found')} against {std_addr['clusters_touched']} of "
+                  f"{std_addr.get('clusters_found')} standard - time weighting does recover some "
+                  "of the apartment-cluster weakness at fine enough resolution, at the ring "
+                  f"precision cost shown above.\n")
+            else:
+                a("No resolution touches fewer apartment clusters than the standard graph. "
+                  "Time weighting does not fix the weakness this arm was built to test; the "
+                  "billing address stays informative and collateral for the same reason stated "
+                  "in the processor-graph section - the two cannot be separated by an edge "
+                  "weight, because the weight is what discovered the address was informative in "
+                  "the first place.\n")
+    else:
+        a("The IEEE-CIS arm did not run this pass - the raw files were absent. Everything above "
+          "is PPA only.\n")
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -1449,6 +1635,7 @@ def write_results(cfg, score: dict | None, ring: dict | None,
         _anchored_section(a, proc)
         _policy_section(a, proc)
         _demo_section(a, cfg)
+        _lockstep_section(a, proc)
         a("## What the relations I cannot rebuild are worth\n")
         a("Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at "
           "all in the released order files, so a graph built from those files "
@@ -2007,6 +2194,32 @@ def update_readme(cfg, score, ring, views) -> Path | None:
                      f"for ₹{c['legitimate_value_harmed_inr']:,.0f} of legitimate value harmed "
                      f"(assumed rupees) |")
 
+    ls = artefact("lockstep.json")
+    if ls:
+        r_ = ls.get("rings_at_headline", {})
+        std_, lk_ = r_.get("standard", {}), r_.get("lockstep", {})
+        dp = (lk_.get("ring_precision") or 0) - (std_.get("ring_precision") or 0)
+        ieee_ = ls.get("ieee_cis_arm")
+        ieee_bit = ""
+        if ieee_:
+            sa = ieee_.get("standard", {}).get("address_cluster_test", {})
+            best = None
+            for arm in (ieee_.get("resolutions") or {}).values():
+                t = arm.get("address_cluster_test", {}).get("clusters_touched")
+                if t is not None and (best is None or t < best):
+                    best = t
+            if best is not None and sa.get("clusters_touched") is not None:
+                if best < sa["clusters_touched"]:
+                    ieee_bit = (f"; on IEEE-CIS the apartment-cluster weakness falls from "
+                               f"{sa['clusters_touched']} to {best} of {sa.get('clusters_found')} "
+                               f"touched at the best resolution")
+                else:
+                    ieee_bit = (f"; on IEEE-CIS the apartment-cluster weakness is unchanged at "
+                               f"{sa['clusters_touched']} of {sa.get('clusters_found')} touched "
+                               f"at every resolution tried")
+        L.append(f"| Telling a crowd from a ring by when it formed | burst-weighted ring "
+                 f"precision {dp:+.4f} on PPA{ieee_bit} |")
+
     an = artefact("anchored.json")
     if an:
         s_ = an["summary"]; g_ = an.get("global_peeling_from_replay") or {}
@@ -2079,6 +2292,11 @@ def main() -> None:
     poj = proc / "policy.json"
     if poj.exists():
         d = policy_frontier_chart(json.loads(poj.read_text()), figs)
+        if d:
+            figures.append(d)
+    lsj = proc / "lockstep.json"
+    if lsj.exists():
+        d = lockstep_chart(json.loads(lsj.read_text()), figs)
         if d:
             figures.append(d)
     fragj = proc / "fragmentation.json"

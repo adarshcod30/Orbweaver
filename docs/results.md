@@ -411,6 +411,57 @@ It carries 50,000 accounts of the 3,267,961 in the run - every member of every r
 
 `requirements-demo.txt` is six packages and none of the pipeline: no pandas, no XGBoost, no matplotlib. It needs pydantic and PyYAML beside the obvious four because the console loads the project config to find the bundle and read the rupee assumptions.
 
+## Telling a crowd from a ring by when it formed
+
+On the processor graph the billing address is at once the strongest relation and the thing that legitimately ties together every card in a building, and weighting cannot separate them because weighting is what found the address informative in the first place. Rarity has the same blind spot on PPA: a hostel's address and a ring's address are equally rare. The published discriminator is time rather than rarity - CopyCatch (Beutel et al., WWW 2013) argues that coordination clusters in a narrow window while natural activity spreads across it - so this measures, per entity, how concentrated in time its members' first arrivals are, corrected for the entity's size against a simulated null, and turns the excess into a second, separate edge weight.
+
+**The null is the part that has to be right.** A two-account entity can only have arrived on at most two distinct days, so raw concentration is guaranteed by size alone. `burst_z(e)` is the entity's concentration against 10,000 simulated draws of the same size, arriving independently in proportion to the platform's own daily activity - the excess over what size alone would produce, not the raw number. A hand-built entity whose members all arrive the same day gets a z of 12; two-account entities average to z ≈ -0.03, not a systematic high score just for being small.
+
+**Fitted, never chosen**, on training accounts only, exactly like the relation weights themselves: 229,213 accounts visible, 76,404 held out and excluded.
+
+| relation | entities | Q1 lift | Q2 lift | Q3 lift | Q4 lift |
+|---|---:|---:|---:|---:|---:|
+| r1 | 501,425 | 4.3894 | 3.7915 | 3.9358 | 3.1359 |
+| r3 | 5,219 | 1.0 | 1.0 | 1.0 | 1.0 |
+| r6 | 100,685 | 1.0 | 2.9322 | 2.5201 | 1.7709 |
+| r7 | 8,392 | 1.5433 | 1.0 | 1.5107 | 1.7007 |
+| r8 | 347,785 | 1.0 | 1.0 | 2.3492 | 2.58 |
+
+**The direction splits by relation, and not along the split I expected.** Ranked by how many entities each relation has - `r1` 501,425, `r8` 347,785, `r6` 100,685, `r7` 8,392, `r3` 5,219 - the two most populous, `r1` and `r8`, disagree with each other: `r1`'s least bursty quartile carries the highest fraud lift (4.39, falling to 3.14 at the most bursty quartile) while `r8`'s rises the other way (1.0 to 2.58). `r6` agrees with `r1`'s direction (2.93 falling to 1.77); `r7`, on far less data, ends up agreeing with `r8`'s. So the result is not "CopyCatch's direction fails here" - it is relation-specific, and I do not have a story that explains the split cleanly. The candidate explanation for `r1` and `r6` is that their most extreme bursts are plausibly genuine marketing events - a promotion launch, a lunch-hour rush at one popular pickup point - where many ordinary customers order inside the same narrow window for a reason that has nothing to do with coordination; `r8`, sales stimulation, may simply not carry that kind of legitimate spike the same way. I am reporting the split rather than picking the half of it that makes a tidier story.
+
+**Ring metrics at the headline operating point, both graphs:**
+
+| | standard graph | lockstep graph |
+|---|---:|---:|
+| ring precision | 0.7292 | 0.7143 |
+| real customers per catch | 0.371 | 0.4 |
+| fraud accounts found | 245 | 165 |
+
+Lockstep weighting moves ring precision by -0.0149. This row sits beside the headline in the README; it never replaces it.
+
+**The crowd test, generalised to all five relations, both ways:**
+
+| relation | clusters found | touched, standard | touched, lockstep |
+|---|---:|---:|---:|
+| r1 | 2,446 | 2 | 1 |
+| r3 | 0 | — | — |
+| r6 | 13,546 | 122 | 101 |
+| r7 | 727 | 3 | 3 |
+| r8 | 1,656 | 6 | 5 |
+
+**Collateral moves the other way from precision.** Of the 4 relations with any legitimate crowds to touch, 3 touch fewer under the lockstep graph, 1 unchanged, and none touch more. Ring precision cost 0.0149 at the headline operating point; the trade is a small amount of precision for a measurable fall, never a rise, in the false-positive population this project cares most about protecting.
+
+**IEEE-CIS is the strong arm** - `TransactionDT` is seconds over six months, so hour, six-hour and day windows are all meaningful, unlike PPA's day-only resolution. Same design, reapplied at each. The billing-address weakness this arm sets out to fix: 4 of 7 apartment clusters touched under the standard graph.
+
+| resolution | ring precision | address clusters touched |
+|---|---:|---:|
+| standard (no time weighting) | 0.5079 | 4 of 7 |
+| 1 hour | 0.4962 | 4 of 7 |
+| 6 hour | 0.495 | 4 of 7 |
+| 1 day | 0.5079 | 4 of 7 |
+
+No resolution touches fewer apartment clusters than the standard graph. Time weighting does not fix the weakness this arm was built to test; the billing address stays informative and collateral for the same reason stated in the processor-graph section - the two cannot be separated by an edge weight, because the weight is what discovered the address was informative in the first place.
+
 ## What the relations I cannot rebuild are worth
 
 Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:
@@ -590,5 +641,7 @@ The separator is the **account score**, not the structure — the touched cluste
 ![ring_persistence](figures/ring_persistence.png)
 
 ![policy_frontier](figures/policy_frontier.png)
+
+![lockstep](figures/lockstep.png)
 
 ![adversarial](figures/adversarial.png)

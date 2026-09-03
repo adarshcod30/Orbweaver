@@ -29,6 +29,12 @@ graph:
   # w_r(e) = 1 / log(rarity_base + |users(e)|): rarer entity, stronger edge
   rarity_base: 2.0
   min_edge_weight: 0.0
+  # Burst-corrected time weighting (orbweaver/data/lockstep.py). Off by
+  # default and off everywhere the standard pipeline runs - build_graph.py
+  # never reads this field. `make lockstep` builds its own second graph
+  # regardless of this value; the flag documents the intent, the second
+  # file is what actually keeps today's numbers from moving.
+  time_weighting: false
 
 subsample:
   # Entity-anchored. Nodes are never sampled at random.

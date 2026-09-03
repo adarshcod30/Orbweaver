@@ -6,11 +6,11 @@ Each entry records what I believed, why it was wrong, and what fixed it.
 Six of these are worth reading before the rest:
 
 - [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
-- [2 September — a column that was full of values it did not have](#2-september--a-column-that-was-full-of-values-it-did-not-have) — a line ending made an empty column look 100% present
 - [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
 - [3 September — `make reproduce` wrote a third of the report before the work existed](#3-september--make-reproduce-wrote-a-third-of-the-report-before-the-work-existed) — a green run for three and a half hours that produced the wrong file
-- [3 September — I set up the same unfair comparison twice](#3-september--i-set-up-the-same-unfair-comparison-twice) — two systems measured under conditions that were not equal, twice in two days
 - [3 September — I built a review queue for a reviewer who turns out not to be the bottleneck](#3-september--i-built-a-review-queue-for-a-reviewer-who-turns-out-not-to-be-the-bottleneck) — I optimised a budget without checking it was the binding constraint
+- [4 September — the null model I built to remove a size bias had one of its own](#4-september--the-null-model-i-built-to-remove-a-size-bias-had-one-of-its-own) — a bug that would not have announced itself in a spot check
+- [4 September — time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) — the fair test, built for exactly this weakness, came back a clean null
 ---
 
 ## 2 September — the first version of this project was the wrong project
@@ -1185,3 +1185,138 @@ category, and I closed one instance of it and mentally filed the category as
 closed. The corrective is boring and I am writing it down because it is easy
 to forget under time pressure: a fix is scoped to exactly what it changed, not
 to what it was supposed to mean.
+
+---
+
+## 4 September — the null model I built to remove a size bias had one of its own
+
+**What broke:** the size correction at the centre of the lockstep module -
+the entire point of which is "an entity's burstiness is its excess over what
+its size alone would produce." I bucketed sizes (2-3, 4-5, 6-10, ...) and
+simulated 10,000 null draws per bucket, each draw's size chosen uniformly
+across the bucket's range. A test comparing 2,000 genuinely random two-account
+entities against this null found a mean z of +0.31 - not the ≈0 the size
+correction is supposed to guarantee.
+
+**What I believed:** that bucketing sizes and simulating within each bucket
+was a reasonable reading of "10,000 draws per size bucket," and that drawing
+the null size uniformly across a bucket's range was a fair representation of
+the bucket as a whole.
+
+**Why that was wrong:** a size-2 entity and a size-3 entity have genuinely
+different null means - I measured them directly, 0.561 against 0.453 at eight
+bins - because concentrating two accounts in one bin is mechanically easier
+than concentrating three. Bucketing them together and drawing the null size
+uniformly builds a null whose average sits between the two. A real size-2
+entity, compared against that mixed null, looks burstier than it is - not
+because it did anything unusual, but because a third of the null's mass came
+from size-3 draws that were never going to concentrate as tightly. The bucket
+boundaries in the design were meant to bound how much simulation work the
+module does; I had let them also decide what an entity gets compared against,
+which is a different and much more consequential choice.
+
+**What fixed it:** simulating the null per exact size instead of per bucket,
+batched into one vectorised call across every distinct size actually present
+rather than one Python loop per size, so the cost stays close to the bucketed
+version despite covering up to ninety-nine sizes instead of six. Size buckets
+now exist only as a label on the fitted table for readability; nothing is
+compared against a bucket average.
+
+**What I take from it:** the test that caught this was not testing the
+feature I thought I was building - it was testing the null's own honesty, and
+the null is the one part of this module a wrong answer would not announce
+itself in. A biased null does not crash, does not look wrong in a spot check,
+and quietly hands every downstream fit a false signal. When a component's
+entire job is "tell me whether this differs from chance," the thing most
+worth testing is whether its own idea of chance is unbiased, before trusting
+anything it says differs from it.
+
+---
+
+## 4 September — a function nobody had called on an empty relation
+
+**What broke:** `find_colocated_clusters`, generalising the hostel test to
+all five relations for the first time. It has existed since the core, always
+called with the default `relation="r1"`, which always has values. The moment
+I called it for a relation with no values in a given window it crashed on an
+empty array: `IndexError: index 0 is out of bounds for axis 0 with size 0`,
+one line into building a group boundary from zero rows.
+
+**What I believed:** that a function running unmodified since the core was
+solid ground to build on.
+
+**Why that was wrong:** it was solid ground for the one input it had ever
+seen. Nothing about `find_colocated_clusters` assumed `relation="r1"`
+specifically - the parameter was already there - but nothing had ever
+exercised the branch where a relation's column is empty after the NaN filter,
+because r1 never is. A test that always calls a function the same way cannot
+tell you what the function does on an input it has never been given, however
+long that test has been passing.
+
+**What fixed it:** one guard - return an empty list immediately when nothing
+survives the filter - and a test that specifically constructs an all-missing
+relation column and confirms the function returns `[]` rather than crashing.
+This module had no test file at all before this pass; it now has one, and the
+empty-relation case is in it precisely because it is the input the function
+had never faced.
+
+**What I take from it:** widening how a function is called is where old code
+meets new inputs for the first time, and that is worth treating as seriously
+as writing the new code itself.
+
+---
+
+## 4 September — time did not separate the hostel from the ring, even where the data gave it every chance to
+
+**What broke:** the hypothesis IEEE-CIS was specifically built to test. The
+processor-graph section already says the billing address is at once the
+strongest relation on that dataset and the thing that legitimately ties every
+card in a building together, and that rarity weighting cannot pull the two
+apart because rarity weighting is what found the address informative in the
+first place. Time looked like the way out - a family accrues cards over
+months, a ring provisions and uses them over a narrower window - and
+`TransactionDT` gives second-resolution timestamps to test that with, unlike
+PPA's day-only data. I fitted burst multipliers at three resolutions - one
+hour, six hours, one day - and re-ran the apartment-cluster test at each.
+
+**What I believed going in:** that time weighting would fix at least part of
+what rarity weighting could not, and that the finest resolution, one hour,
+would show the clearest effect, since it gives the sharpest possible view of
+how tightly a group's card provisioning clusters.
+
+**What actually happened:** four of seven apartment clusters touched, at
+every single resolution, identically. Not a smaller effect at coarser
+windows and a larger one at finer windows - the same number, unchanged, from
+one hour down to one day. Ring precision, meanwhile, moved slightly the wrong
+way at the finer resolutions (0.4962 and 0.495 against the standard graph's
+0.5079) and came back to exactly 0.5079 - no different at all - at one day.
+
+**Why I believe this, rather than suspecting a bug:** the same four clusters
+are touched under the standard graph and under all three lockstep variants,
+which is a stronger and more specific kind of "no effect" than the numbers
+alone convey - it is not that the count coincidentally landed on four four
+times, it is the same four buildings every time. That is consistent with the
+processor-graph section's own explanation: the billing address is not
+informative *despite* being shared by a legitimate building, it is
+informative largely *because of* it, and no reweighting of the same edges -
+by rarity, by relation, or now by time - changes which edges those are.
+
+**What PPA's arm of the same test adds, and complicates:** on PPA the
+direction of the effect splits by relation rather than confirming or refuting
+CopyCatch cleanly. The two most populous relations disagree with each other -
+`r1`, order location, has its least bursty quartile carrying the highest
+fraud lift; `r8`, sales stimulation, has the opposite shape, rising toward
+the bursty end the way CopyCatch predicts. I do not have a clean story for
+why the split falls where it does, and I would rather say that than invent
+one. What is unambiguous is the crowd-test collateral: on the three PPA
+relations where lockstep weighting changed anything, it touched fewer
+legitimate crowds every time, never more - a real, if modest, second-order
+benefit riding alongside a small (-0.0149) precision cost.
+
+**What I take from it:** IEEE-CIS was the fair test, built for the reason
+this exact weakness needed one, and it returned as clean a null as this
+project has produced - not a slight effect swamped by noise, but the
+identical population untouched across an entire order of magnitude of
+resolution. The instinct to look for another axis to weight by, when rarity
+and relation-lift both leave the same population exposed, is worth retiring
+rather than repeating on the next relation this turns out to be true of.

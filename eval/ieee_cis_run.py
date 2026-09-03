@@ -134,20 +134,23 @@ def address_cluster_test(cfg: Config, df, account, labels, rings, n) -> dict:
             "criteria": "15+ cards billed to one address, 80%+ of labelled ones good"}
 
 
-def run(cfg: Config | None = None) -> dict:
+def prepare_ieee(cfg: Config) -> dict:
+    """Load, dedupe, label, split, score and build the late graph once.
+
+    Factored out of `run()` so the lockstep arm can share exactly this state
+    - same accounts, same labels, same split, same scores - rather than
+    re-deriving it and risking a second version that quietly disagrees with
+    the committed numbers. `run()` below calls this and its own output is
+    unchanged by the refactor; a test checks that.
+    """
     import xgboost as xgb
     from sklearn.isotonic import IsotonicRegression
 
-    from eval.metrics import evaluate
-    from orbweaver.rings.cost import evaluate_rings
-
-    cfg = cfg or load_config()
     print("loading transactions ...", flush=True)
     df = load_raw(cfg)
     account, fingerprints = account_proxy(df)
     n = int(account.max()) + 1
 
-    # Fingerprints seen absurdly often are a shared default, not one card.
     counts = np.bincount(account, minlength=n)
     too_common = counts > MAX_TX_PER_ACCOUNT
     keep_tx = ~too_common[account]
@@ -166,7 +169,6 @@ def run(cfg: Config | None = None) -> dict:
     cols = relation_columns(df)
     rng = np.random.default_rng(cfg.seed)
 
-    # Account-disjoint on top of the time split, stratified by label.
     labelled = np.flatnonzero(labels != -1)
     tr_parts, te_parts = [], []
     for cls in (0, 1):
@@ -210,6 +212,25 @@ def run(cfg: Config | None = None) -> dict:
     iso.fit(model.predict_proba(Xe[train])[:, 1], y[train])
     scores = iso.predict(model.predict_proba(Xl)[:, 1]).astype(np.float64)
 
+    return {"df": df, "account": account, "n": n, "labels": labels, "sens": sens,
+           "days": days, "mid": mid, "early": early, "late": late, "cols": cols,
+           "train": train, "test": test, "alphas": alphas, "alphas_info": alphas_info,
+           "e_early": e_early, "e_late": e_late, "m_late": m_late,
+           "per_rel_late": per_rel_late, "scores": scores}
+
+
+def run(cfg: Config | None = None) -> dict:
+    from eval.metrics import evaluate
+    from orbweaver.rings.cost import evaluate_rings
+
+    cfg = cfg or load_config()
+    st = prepare_ieee(cfg)
+    df, account, n, labels = st["df"], st["account"], st["n"], st["labels"]
+    late, test, scores = st["late"], st["test"], st["scores"]
+    days, mid, train = st["days"], st["mid"], st["train"]
+    e_late = st["e_late"]
+
+    y = (labels == 1).astype(np.int8)
     node = evaluate(y[test], scores[test])
     base = float(y[test].mean())
 
@@ -247,10 +268,10 @@ def run(cfg: Config | None = None) -> dict:
             "heldout_base_rate": round(base, 4),
         },
         "label_rule": {"headline": "at least half an account's transactions are fraud",
-                       "sensitivity": sens},
-        "relation_weights": alphas_info,
-        "edges": {"early": int(e_early.src.size), "late": int(e_late.src.size),
-                  "per_relation_late": per_rel_late},
+                       "sensitivity": st["sens"]},
+        "relation_weights": st["alphas_info"],
+        "edges": {"early": int(st["e_early"].src.size), "late": int(e_late.src.size),
+                  "per_relation_late": st["per_rel_late"]},
         "node_scoring_heldout": node,
         "rings": {
             "tau": cfg.rings.prune_tau_headline,
