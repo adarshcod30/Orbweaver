@@ -145,7 +145,8 @@ against a base rate of {esc(report.get('base_rate_among_labelled'))}.</p>
 {DEMO_BANNER if demo_mode() else ""}
 <div class="assume">Leads for a human to review, not verdicts. Rupee figures use
 an assumed value — this dataset ships no monetary amounts.</div>
-<p class="sub"><a href="/findings">What this found, and what it did not</a> ·
+<p class="sub"><a href="/offers">Which offers are being farmed</a> ·
+<a href="/findings">What this found, and what it did not</a> ·
 <a href="/health">health</a></p>
 <form class="controls" hx-get="/rings" hx-target="#rings" hx-trigger="change, load">
   <div><label>shares a</label><select name="shares">{opts}</select></div>
@@ -160,6 +161,92 @@ an assumed value — this dataset ships no monetary amounts.</div>
 @app.get("/rings", response_class=HTMLResponse)
 def rings(shares: str = Query("any"), min_fraud: int = Query(0)) -> str:
     return ring_rows(load_report(), shares, min_fraud)
+
+
+def load_offers() -> dict:
+    return artefact("offers.json")
+
+
+def offer_rows(out: dict, by: str, min_redeemers: int) -> str:
+    offers = [o for o in out.get("offers", []) if o["redeemers"] >= min_redeemers]
+    key = (lambda o: -o["share_in_a_ring"]) if by == "ring_share" else (lambda o: -o["mean_score"])
+    offers = sorted(offers, key=key)[:200]
+    rows = []
+    for o in offers:
+        rows.append(
+            f'<div class="row" hx-get="/offers/{o["relation"]}/{o["entity"]}" '
+            f'hx-target="#detail" hx-swap="innerHTML">'
+            f'<div class="top"><strong>{esc(o["relation_label"])} — '
+            f'{o["redeemers"]:,} redeemers</strong>'
+            f'<span>₹{o["rupees_at_stake"]:,.0f}</span></div>'
+            f'<div class="why">{o["share_in_a_ring"]:.0%} already in a ring · '
+            f'mean score {o["mean_score"]:.3f} · on {o["distinct_rings"]} distinct rings</div></div>')
+    return "".join(rows) or '<div class="empty">Nothing matches that filter.</div>'
+
+
+@app.get("/offers", response_class=HTMLResponse)
+def offers_page() -> str:
+    out = load_offers()
+    if not out:
+        return "<p>No offer report found. Run <code>make offers</code> first.</p>"
+    return f"""<!doctype html><meta charset="utf-8"><title>Orbweaver — offers</title>
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<style>{CSS}{EXTRA_CSS}</style>
+<div class="wrap">
+<h1>Which offers are being farmed</h1>
+<p class="sub">{out['n_offers']:,} offers across the promotion, coupon and sales-
+stimulation relations, in the scoring window. Ranked by leakage - the share of
+redeemers a ring already flagged, or the account scorer's mean opinion of
+them - never by a label.</p>
+{DEMO_BANNER if demo_mode() else ""}
+<div class="assume">The ranking uses no label. The labelled fraud share on
+each card is what it is checked against, shown for review, never fed back
+into the ranking.</div>
+<form class="controls" hx-get="/offers/rows" hx-target="#offers" hx-trigger="change, load">
+  <div><label>rank by</label><select name="by">
+    <option value="ring_share">share already in a ring</option>
+    <option value="mean_score">mean member score</option>
+  </select></div>
+  <div><label>at least this many redeemers</label>
+    <input type="number" name="min_redeemers" value="5" min="1" style="width:90px"></div>
+</form>
+<div id="offers"></div>
+<div id="detail"></div>
+<p class="sub"><a href="/">Back to the review queue</a></p>
+</div>"""
+
+
+@app.get("/offers/rows", response_class=HTMLResponse)
+def offers_rows(by: str = Query("ring_share"), min_redeemers: int = Query(5)) -> str:
+    return offer_rows(load_offers(), by, min_redeemers)
+
+
+@app.get("/offers/{relation}/{entity}", response_class=HTMLResponse)
+def offer_detail(relation: str, entity: int) -> str:
+    out = load_offers()
+    o = next((x for x in out.get("offers", [])
+             if x["relation"] == relation and x["entity"] == entity), None)
+    if not o:
+        return '<div class="empty">No such offer.</div>'
+    ring_links = "".join(
+        f'<span class="tag n" style="cursor:pointer" '
+        f'hx-get="/ring/{r}" hx-target="#detail" hx-swap="innerHTML">ring #{r}</span> '
+        for r in o.get("ring_ranks", [])) or '<span class="note">none yet</span>'
+    fraud_share = o.get("fraud_share_among_labelled")
+    return f"""<div class="card">
+<h2>{esc(o['relation_label'])} #{o['entity']} — {o['redeemers']:,} redeemers</h2>
+<div class="meta">{o['share_in_a_ring']:.0%} already in a ring ·
+mean score {o['mean_score']:.3f} · p90 score {o['p90_score']:.3f} ·
+<strong>₹{o['rupees_at_stake']:,.0f}</strong> at stake</div>
+<div class="meta">{esc(f"burst z {o['burst_z']}") if o.get('burst_z') is not None else ""}</div>
+<span class="tag f">{o['fraud_redeemers']} known fraud</span>
+<span class="tag n">{o['labelled_redeemers'] - o['fraud_redeemers']} known good</span>
+<span class="tag u">{o['redeemers'] - o['labelled_redeemers']} unreviewed</span>
+<div class="note">labelled fraud share: {esc(fraud_share) if fraud_share is not None else 'too few labelled to say'}
+ — the evaluation target, not an input to the ranking above</div>
+<div class="note">rings on this offer: {ring_links}</div>
+<div class="note">{esc(o.get('rupees_at_stake_basis', ''))}</div>
+</div>"""
 
 
 @app.get("/ring/{rank}", response_class=HTMLResponse)
@@ -181,6 +268,13 @@ def ring_detail(rank: int) -> str:
              f'<th class="num">platform-wide</th></tr>{rows}</table>'
              if rows else '<p class="note">No single strong shared entity.</p>')
     members = ", ".join(str(m) for m in case.get("members_sample", [])[:20])
+    offer_links = "".join(
+        f'<span class="tag n" style="cursor:pointer" '
+        f'hx-get="/offers/{e["relation"]}/{e["entity_id"]}" hx-target="#detail" hx-swap="innerHTML">'
+        f'{esc(e["relation_label"])} #{e["entity_id"]}</span> '
+        for e in case.get("shared_entities", []) if e["relation"] in ("r6", "r7", "r8"))
+    offers_note = (f'<div class="note">offers this ring redeemed: {offer_links}</div>'
+                  if offer_links else "")
     return f"""<div class="card">
 <h2>Ring #{case['rank']} — {case['size']} accounts</h2>
 <div class="meta">density {esc(case.get('density'))} ·
@@ -193,6 +287,7 @@ def ring_detail(rank: int) -> str:
 {table}
 <div class="note">First accounts: {esc(members)}</div>
 <div class="note">{esc(case.get('rupees_at_stake_basis', ''))}</div>
+{offers_note}
 </div>"""
 
 

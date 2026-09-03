@@ -397,13 +397,14 @@ Everything above needs the raw dataset: four gigabytes from OSF, an hour of proc
 
 | file | size |
 |---|---:|
+| `offers.json` | 1.16 MB |
 | `accounts.parquet` | 0.38 MB |
 | `policy.json` | 0.06 MB |
 | `rings.json` | 0.06 MB |
 | `anchored.json` | 0.02 MB |
 | `replay.json` | 0.02 MB |
 | `hostel_test.json` | 0.00 MB |
-| **total** | **0.53 MB** of a 42 MB limit |
+| **total** | **1.69 MB** of a 42 MB limit |
 
 It carries 50,000 accounts of the 3,267,961 in the run - every member of every ring the console shows (542 accounts) plus a random sample, so the page answers for ordinary accounts and not only for suspicious ones.
 
@@ -461,6 +462,38 @@ Lockstep weighting moves ring precision by -0.0149. This row sits beside the hea
 | 1 day | 0.5079 | 4 of 7 |
 
 No resolution touches fewer apartment clusters than the standard graph. Time weighting does not fix the weakness this arm was built to test; the billing address stays informative and collateral for the same reason stated in the processor-graph section - the two cannot be separated by an edge weight, because the weight is what discovered the address was informative in the first place.
+
+## Which offers are being farmed
+
+Every other view in this project is account-shaped. The person who owns the promotion budget thinks in campaigns - which offer is leaking, how much, and since when - and Razorpay issues promotions itself through its rewards marketplace, so that is the view its own business would open first. There is a structural reason too: ring recall is 0.0036 by construction, because twenty-five rings surface a few hundred accounts. One farmed offer surfaces every account that redeemed it, which scales where the ring view cannot.
+
+**The leakage score never sees a label.** It is the share of an offer's redeemers a ring already flagged, or the account scorer's mean opinion of them - both computable before anyone checks who is actually fraudulent. The labelled fraud share is the evaluation target, computed separately and never fed back in.
+
+**117,056 offers** survived across `r6`, `r7` and `r8` in the scoring window, out of 5,337,252 excluded as too small to be a campaign (fewer than 5 redeemers - `r8` alone has millions of once-used codes) and 1 excluded as a platform default rather than something anyone farmed - one `r7` value alone covers 262,722 accounts, 10% of everyone active in the window, the coupon-type analogue of the near-universal default `docs/architecture.md` already documents for the graph.
+
+**precision@k, ranked by leakage, against the labelled base rate and against k random offers:**
+
+| top-k | leakage-ranked precision | vs base rate | k random offers (mean) |
+|---:|---:|---:|---:|
+| 10 | n/a - no labelled redeemer in the top-k | — | 0.1967 |
+| 25 | 0.7887 | 0.5645 | 0.2068 |
+| 50 | 0.5346 | 0.3104 | 0.2162 |
+
+**The top 10 by raw ring-share is undefined, and that is itself informative.** At this depth the ranking is dominated by ties among the smallest offers - five or six redeemers, nearly all already in a ring - and on a dataset where 90.6% of accounts are unlabelled, several of those ties land entirely among accounts nobody has reviewed. That is not a broken ranking; it is what "most of the platform is unlabelled" looks like at k=10, stated as the caveat it is rather than smoothed over.
+
+**Coverage against the recall ceiling, two ways** - the honest comparison of two review surfaces, since ring recall is 0.0036 by construction. Ranking by leakage is precise but the offers it puts first are small, which caps how much of total fraud they can ever touch; ranking by raw size answers a different question - how far past the recall ceiling can this surface reach at all, at the cost of reviewing far more accounts.
+
+| top-k | leakage-ranked coverage | accounts | size-ranked coverage | accounts |
+|---:|---:|---:|---:|---:|
+| 10 | 0.01% | 65 | 2.82% | 155,893 |
+| 25 | 0.01% | 147 | 5.26% | 240,800 |
+| 50 | 0.04% | 292 | 7.08% | 325,494 |
+
+Fifty offers ranked by size cover 7.08% of all labelled fraud against the ring's 0.36% - 19.7x the recall ceiling - at the cost of 325,494 accounts reviewed instead of a few hundred. Neither ranking is the answer; which one to use is a policy choice about how much review capacity exists, not a technical one.
+
+**Early warning inside the replay.** Of 4,074 offers confirmed bad by the window's end (majority of labelled redeemers fraudulent), 1,240 crossed 10% above the platform's own same-night high-score rate before the window closed, at a median of night 2.
+
+The other 2,834 never crossed the margin inside the window - a real limit stated rather than hidden: an offer can be confirmed bad only once enough of its redeemers accumulate to say so, and for some that happens no earlier than the final night.
 
 ## What the relations I cannot rebuild are worth
 
@@ -643,5 +676,7 @@ The separator is the **account score**, not the structure — the touched cluste
 ![policy_frontier](figures/policy_frontier.png)
 
 ![lockstep](figures/lockstep.png)
+
+![offer_leakage](figures/offer_leakage.png)
 
 ![adversarial](figures/adversarial.png)

@@ -70,6 +70,8 @@ ARTEFACT_SECTIONS = {
     "ieee_cis.json": "## A payment processor's graph",
     "anchored.json": "## A ring you can find again tomorrow",
     "policy.json": "## What to do with the queue, given a budget",
+    "lockstep.json": "## Telling a crowd from a ring by when it formed",
+    "offers.json": "## Which offers are being farmed",
 }
 
 # The demo bundle has no artefact in data/processed - it *is* the artefact -
@@ -135,6 +137,8 @@ ARTEFACT_FIGURES = {
     "ieee_cis.json": "ieee_relation_lift.png",
     "anchored.json": "ring_persistence.png",
     "policy.json": "policy_frontier.png",
+    "lockstep.json": "lockstep.png",
+    "offers.json": "offer_leakage.png",
 }
 
 

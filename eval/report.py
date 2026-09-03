@@ -1081,6 +1081,162 @@ def _lockstep_section(a, proc: Path) -> None:
           "is PPA only.\n")
 
 
+def offer_leakage_chart(off: dict, out: Path) -> Path | None:
+    """Left: precision@k of the leakage ranking against the base rate and
+    against drawing k offers at random. Right: fraud coverage of the top-k
+    offers against ring recall - the answer to the recall ceiling."""
+    prec = off.get("precision_at_k", {}).get("by_ring_share") or {}
+    cov = off.get("coverage") or {}
+    if not prec or not cov.get("by_leakage_mean_score"):
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4), dpi=160)
+
+    ax = axes[0]
+    _style(ax)
+    ks = sorted(prec, key=int)
+    x = np.arange(len(ks))
+    leak = [prec[k]["leakage_ranked"]["precision"] for k in ks]
+    rand = [prec[k]["random_offers"]["mean"] for k in ks]
+    base = off.get("base_rate", 0)
+    w = 0.36
+    ax.bar(x - w / 2, [v if v is not None else 0 for v in leak], w, color=ACCENT,
+          label="ranked by leakage")
+    ax.bar(x + w / 2, [v if v is not None else 0 for v in rand], w, color=MUTED,
+          label="k random offers")
+    ax.axhline(base, color=INK, linewidth=1.0, linestyle="--", label="labelled base rate")
+    for i, v in enumerate(leak):
+        if v is None:
+            ax.annotate("n/a", xy=(i - w / 2, 0.02), ha="center", fontsize=8, color=ACCENT)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"top {k}" for k in ks])
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("precision (pooled over unique accounts)", fontsize=10, color=INK)
+    ax.set_title("Does leakage rank offers well?", color=INK, fontsize=12, loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=8)
+
+    ax = axes[1]
+    _style(ax)
+    pts_leak = cov.get("by_leakage_mean_score", [])
+    pts_size = cov.get("by_redeemer_count", [])
+    ax.plot([p["k"] for p in pts_leak], [p["fraud_coverage"] for p in pts_leak],
+           color=ACCENT, linewidth=1.6, label="ranked by leakage")
+    ax.plot([p["k"] for p in pts_size], [p["fraud_coverage"] for p in pts_size],
+           color=INK, linewidth=1.6, label="ranked by size (redeemers)")
+    rr = cov.get("ring_recall_reference")
+    if rr is not None:
+        ax.axhline(rr, color=MUTED, linewidth=1.2, linestyle="--",
+                  label=f"ring recall ({rr})")
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    ax.set_xlabel("top-k offers reviewed", fontsize=10, color=INK)
+    ax.set_ylabel("share of all labelled fraud accounts covered", fontsize=10, color=INK)
+    ax.set_title("Fraud coverage: precise-but-small vs big-but-blunt", color=INK, fontsize=12,
+                 loc="left", pad=10)
+
+    fig.tight_layout()
+    dest = out / "offer_leakage.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
+def _offers_section(a, proc: Path) -> None:
+    f = proc / "offers.json"
+    if not f.exists():
+        return
+    off = json.loads(f.read_text())
+    excl = off.get("exclusions", {})
+    prec = off.get("precision_at_k", {})
+    cov = off.get("coverage", {})
+    warn = off.get("early_warning")
+
+    a("## Which offers are being farmed\n")
+    a("Every other view in this project is account-shaped. The person who owns the promotion "
+      "budget thinks in campaigns - which offer is leaking, how much, and since when - and "
+      "Razorpay issues promotions itself through its rewards marketplace, so that is the view "
+      "its own business would open first. There is a structural reason too: ring recall is "
+      f"{cov.get('ring_recall_reference')} by construction, because twenty-five rings surface a "
+      "few hundred accounts. One farmed offer surfaces every account that redeemed it, which "
+      "scales where the ring view cannot.\n")
+    a("**The leakage score never sees a label.** It is the share of an offer's redeemers a ring "
+      "already flagged, or the account scorer's mean opinion of them - both computable before "
+      "anyone checks who is actually fraudulent. The labelled fraud share is the evaluation "
+      "target, computed separately and never fed back in.\n")
+
+    a(f"**{off.get('n_offers', 0):,} offers** survived across `r6`, `r7` and `r8` in the scoring "
+      f"window, out of {sum(excl.get('excluded_as_too_small', {}).values()):,} excluded as too "
+      f"small to be a campaign (fewer than {excl.get('min_redeemers_to_report')} redeemers - `r8` "
+      "alone has millions of once-used codes) and "
+      f"{sum(excl.get('excluded_as_platform_default', {}).values())} excluded as a platform "
+      f"default rather than something anyone farmed - one `r7` value alone covers "
+      f"{excl.get('max_redeemers_this_window', 0):,} accounts, "
+      f"{excl.get('max_redeemers_this_window', 0) / max(excl.get('active_accounts_in_window', 1), 1):.0%} "
+      "of everyone active in the window, the coupon-type analogue of the near-universal default "
+      "`docs/architecture.md` already documents for the graph.\n")
+
+    a("**precision@k, ranked by leakage, against the labelled base rate and against k random "
+      "offers:**\n")
+    a("| top-k | leakage-ranked precision | vs base rate | k random offers (mean) |")
+    a("|---:|---:|---:|---:|")
+    for k, row in sorted(prec.get("by_ring_share", {}).items(), key=lambda kv: int(kv[0])):
+        lp = row["leakage_ranked"]["precision"]
+        a(f"| {k} | {lp if lp is not None else 'n/a - no labelled redeemer in the top-k'} | "
+          f"{row.get('vs_base_rate') if lp is not None else '—'} | "
+          f"{row['random_offers']['mean']} |")
+    a("")
+    none_at_10 = prec.get("by_ring_share", {}).get("10", {}).get("leakage_ranked", {}).get("precision") is None
+    if none_at_10:
+        a("**The top 10 by raw ring-share is undefined, and that is itself informative.** At "
+          "this depth the ranking is dominated by ties among the smallest offers - five or six "
+          "redeemers, nearly all already in a ring - and on a dataset where 90.6% of accounts "
+          "are unlabelled, several of those ties land entirely among accounts nobody has "
+          "reviewed. That is not a broken ranking; it is what \"most of the platform is "
+          "unlabelled\" looks like at k=10, stated as the caveat it is rather than smoothed "
+          "over.\n")
+
+    a("**Coverage against the recall ceiling, two ways** - the honest comparison of two "
+      f"review surfaces, since ring recall is {cov.get('ring_recall_reference')} by "
+      "construction. Ranking by leakage is precise but the offers it puts first are small, "
+      "which caps how much of total fraud they can ever touch; ranking by raw size answers a "
+      "different question - how far past the recall ceiling can this surface reach at all, at "
+      "the cost of reviewing far more accounts.\n")
+    a("| top-k | leakage-ranked coverage | accounts | size-ranked coverage | accounts |")
+    a("|---:|---:|---:|---:|---:|")
+    pts_leak = cov.get("by_leakage_mean_score", [])
+    pts_size = cov.get("by_redeemer_count", [])
+    for k in (10, 25, 50):
+        rl = next((p for p in pts_leak if p["k"] == k), None)
+        rs = next((p for p in pts_size if p["k"] == k), None)
+        if rl and rs:
+            a(f"| {k} | {rl['fraud_coverage']:.2%} | {rl['accounts_reviewed']:,} | "
+              f"{rs['fraud_coverage']:.2%} | {rs['accounts_reviewed']:,} |")
+    a("")
+    rs50 = next((p for p in pts_size if p["k"] == 50), None)
+    rr = cov.get("ring_recall_reference")
+    if rs50 and rr:
+        a(f"Fifty offers ranked by size cover {rs50['fraud_coverage']:.2%} of all labelled "
+          f"fraud against the ring's {rr:.2%} - "
+          f"{rs50['fraud_coverage'] / rr:.1f}x the recall ceiling - at the cost of "
+          f"{rs50['accounts_reviewed']:,} accounts reviewed instead of a few hundred. Neither "
+          "ranking is the answer; which one to use is a policy choice about how much review "
+          "capacity exists, not a technical one.\n")
+
+    if warn:
+        a(f"**Early warning inside the replay.** Of {warn['confirmed_bad_offers']:,} offers "
+          f"confirmed bad by the window's end (majority of labelled redeemers fraudulent), "
+          f"{warn['ever_warned']:,} crossed {warn['margin']:.0%} above the platform's own "
+          "same-night high-score rate before the window closed"
+          + (f", at a median of night {warn['median_night_of_first_warning']:.0f}"
+             if warn.get("median_night_of_first_warning") else "") + ".\n")
+        if warn["ever_warned"] < warn["confirmed_bad_offers"]:
+            a(f"The other {warn['confirmed_bad_offers'] - warn['ever_warned']:,} never crossed the "
+              "margin inside the window - a real limit stated rather than hidden: an offer can "
+              "be confirmed bad only once enough of its redeemers accumulate to say so, and for "
+              "some that happens no earlier than the final night.\n")
+    else:
+        a("Early warning did not run this pass.\n")
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -1636,6 +1792,7 @@ def write_results(cfg, score: dict | None, ring: dict | None,
         _policy_section(a, proc)
         _demo_section(a, cfg)
         _lockstep_section(a, proc)
+        _offers_section(a, proc)
         a("## What the relations I cannot rebuild are worth\n")
         a("Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at "
           "all in the released order files, so a graph built from those files "
@@ -2220,6 +2377,17 @@ def update_readme(cfg, score, ring, views) -> Path | None:
         L.append(f"| Telling a crowd from a ring by when it formed | burst-weighted ring "
                  f"precision {dp:+.4f} on PPA{ieee_bit} |")
 
+    off = artefact("offers.json")
+    if off:
+        cov = off.get("coverage", {})
+        row50 = next((p for p in cov.get("by_redeemer_count", []) if p["k"] == 50), None)
+        rr = cov.get("ring_recall_reference")
+        if row50 and rr:
+            L.append(f"| Which offers are being farmed | top 50 offers by size "
+                     f"({row50['accounts_reviewed']:,} accounts) cover "
+                     f"{row50['fraud_coverage']:.1%} of all labelled fraud, "
+                     f"{row50['fraud_coverage'] / rr:.1f}x the {rr:.2%} ring recall ceiling |")
+
     an = artefact("anchored.json")
     if an:
         s_ = an["summary"]; g_ = an.get("global_peeling_from_replay") or {}
@@ -2297,6 +2465,11 @@ def main() -> None:
     lsj = proc / "lockstep.json"
     if lsj.exists():
         d = lockstep_chart(json.loads(lsj.read_text()), figs)
+        if d:
+            figures.append(d)
+    ofj = proc / "offers.json"
+    if ofj.exists():
+        d = offer_leakage_chart(json.loads(ofj.read_text()), figs)
         if d:
             figures.append(d)
     fragj = proc / "fragmentation.json"

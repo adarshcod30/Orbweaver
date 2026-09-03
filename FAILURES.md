@@ -8,9 +8,9 @@ Six of these are worth reading before the rest:
 - [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
 - [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
 - [3 September — `make reproduce` wrote a third of the report before the work existed](#3-september--make-reproduce-wrote-a-third-of-the-report-before-the-work-existed) — a green run for three and a half hours that produced the wrong file
-- [3 September — I built a review queue for a reviewer who turns out not to be the bottleneck](#3-september--i-built-a-review-queue-for-a-reviewer-who-turns-out-not-to-be-the-bottleneck) — I optimised a budget without checking it was the binding constraint
 - [4 September — the null model I built to remove a size bias had one of its own](#4-september--the-null-model-i-built-to-remove-a-size-bias-had-one-of-its-own) — a bug that would not have announced itself in a spot check
 - [4 September — time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) — the fair test, built for exactly this weakness, came back a clean null
+- [4 September — "every offer" turned out to mean five million rows, most of them noise or a default value](#4-september--every-offer-turned-out-to-mean-five-million-rows-most-of-them-noise-or-a-default-value) — a documented data quirk I had already read about, applied to the wrong module
 ---
 
 ## 2 September — the first version of this project was the wrong project
@@ -1320,3 +1320,81 @@ identical population untouched across an entire order of magnitude of
 resolution. The instinct to look for another axis to weight by, when rarity
 and relation-lift both leave the same population exposed, is worth retiring
 rather than repeating on the next relation this turns out to be true of.
+
+---
+
+## 4 September — "every offer" turned out to mean five million rows, most of them noise or a default value
+
+**What broke:** the very first run of the offer table. I deliberately left
+entity size uncapped for this view, on the reasoning that an offer used by
+thousands of accounts is exactly the case a promotions-budget owner wants to
+see, unlike the graph, which caps entity size because an uncapped entity
+would otherwise induce a near-complete subgraph. The first run produced
+5,454,309 "offers." The single largest was a coupon-type value with
+2,531,374 redeemers - 96.4% of every account active in the scoring window.
+
+**What I believed:** that removing the graph's size cap was enough - that an
+"offer" is just whatever value an account has in the promotion, coupon-type
+or sales-stimulation column, and the only reason the graph capped entity size
+was combinatorial cost, which does not apply to a table of aggregates.
+
+**Why that was wrong:** `build_graph.py`'s own docstring already names this
+exact failure mode - "one coupon type is shared by 3,187,247 users, 97.5% of
+the entire user base" - and explains it as a default value standing in for
+"no coupon," not a real campaign. I had read that line while working on an
+earlier part of this project and did not connect it to a new view built over
+the same columns. The other four million rows were the opposite problem:
+`r8` alone has 5.2 million distinct codes, most used by exactly one account,
+which is not a farmed offer either - it is a value that happened once.
+
+**What fixed it:** a floor - fewer than five redeemers is noise, not a
+campaign - and a ceiling - more than 10% of every account active in the
+window is a platform default, not something anyone farmed, the same
+reasoning the graph's own cap rests on, just against redeemer count rather
+than combinatorial pair count. 117,056 offers survived, and the excluded
+counts are in the artefact and the section rather than silently dropped.
+
+**What I take from it:** I had the right instinct - do not reflexively copy
+a cap designed for a different cost model - and executed it without
+re-deriving why the cap existed in the first place. The graph's cap was
+never really "about" the pair explosion; the pair explosion was the
+*consequence* of the real problem, which is that some values in these
+columns are not offers at all. Removing a constraint because its stated
+justification does not apply is only safe once you have checked whether a
+second, unstated justification was doing work too.
+
+---
+
+## 4 September — I persisted the wrong five hundred offers for the page that ranks them by leakage
+
+**What broke:** the `/offers` console page, before anyone had loaded it. I
+kept the largest 500 offers by redeemer count for the persisted artefact,
+reasoning that anything a reviewer would want to drill into would be a large
+campaign. The precision@k table this project's own numbers rest on says
+otherwise: the highest-leakage offers by raw ring-share are dominated by
+small ones - five or six redeemers, nearly all already in a ring. Persisting
+only the biggest campaigns would have meant the console's own leakage
+ranking silently excluded the offers that ranking is supposed to lead with.
+
+**What I believed:** that "the offers worth showing" and "the offers with
+the most redeemers" were close enough to the same set that trimming by one
+would not distort the other.
+
+**Why that was wrong:** I had already measured, in the very same run, that
+they are not the same set - the precision@10 table came back `None` because
+the top-ranked offers by leakage were small enough that none of their
+redeemers were labelled. That number was sitting in my own terminal output
+when I wrote the persistence logic, and I did not connect it to what the
+persistence logic needed to preserve.
+
+**What fixed it:** persisting the union of the top three hundred offers
+under each of the rankings the console actually offers - redeemer count,
+ring share, mean score - rather than one ranking's top slice standing in for
+all of them. A test now asserts the top ten offers under every ranking are
+actually present in what gets written to disk.
+
+**What I take from it:** a number I compute and print is not automatically a
+number I have understood well enough to act on elsewhere in the same
+function. I read the None correctly as "the ranking is dominated by small
+offers" for the purposes of the report section, and then wrote a completely
+separate piece of code five minutes later that assumed the opposite.

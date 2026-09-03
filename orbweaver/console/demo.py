@@ -173,6 +173,17 @@ def build(cfg: Config | None = None) -> dict:
             (dest / name).write_text(json.dumps(json.loads(p.read_text()),
                                                 separators=(",", ":")))
 
+    op = proc / "offers.json"
+    if op.exists():
+        offers_full = json.loads(op.read_text())
+        # The by-night detail is for the results section, not the console;
+        # the bundle keeps only what /offers actually renders.
+        trimmed = {k: v for k, v in offers_full.items() if k != "early_warning"}
+        if offers_full.get("early_warning"):
+            ew = offers_full["early_warning"]
+            trimmed["early_warning"] = {k: v for k, v in ew.items() if k != "by_night"}
+        (dest / "offers.json").write_text(json.dumps(trimmed, separators=(",", ":"), default=float))
+
     files = sorted(f for f in dest.iterdir() if f.is_file() and f.name != "meta.json")
     total = sum(f.stat().st_size for f in files)
     anchored_members = int(np.isin(keep, must_have).sum())
