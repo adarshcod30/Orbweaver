@@ -55,7 +55,7 @@ location is more incriminating than sharing a promotion.** Fitted on training
 accounts only, from how much more often each relation joins two known
 fraudsters than chance would predict. On this data the relation that dominates
 the graph carries the weakest signal — promotion edges are 70% of all edges at
-1.76× lift, while location edges are 16% at 3.68×.
+1.76× lift, while location edges are 16% at 3.71×.
 
 ## 3. Score accounts
 

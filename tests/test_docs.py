@@ -122,3 +122,50 @@ def test_every_artefact_has_a_figure():
         elif text and f"figures/{fig}" not in text:
             missing.append(f"{fig} (drawn but not shown)")
     assert not missing, f"artefacts reported without a figure: {missing}"
+
+
+def test_prose_numbers_match_the_artefacts():
+    """The hand-written docs quote a few numbers from the run. Those cannot be
+    generated, so they are pinned here instead: each expected string is derived
+    from the artefact, and the test says which document has gone stale.
+
+    This exists because a read-through found the location lift quoted as 3.68×
+    in two documents while the artefact said 3.7072, and a GraphSAGE paragraph
+    describing a GPU run at 95 seconds when the recorded run was the CPU at 42.
+    Every generated number was right; every stale one had been typed.
+    """
+    import json
+    from orbweaver.features.node_features import FEATURE_NAMES
+
+    proc = CFG.abs_path(CFG.paths.processed)
+    weights = proc / "relation_weights.json"
+    manifest = proc / "edges_week2_late_manifest.json"
+    if not (weights.exists() and manifest.exists()):
+        return
+    w = json.loads(weights.read_text())
+    w = w.get("relations") or w
+    m = json.loads(manifest.read_text())
+    share = {k: v["pairs"] / m["unique_edges"] for k, v in m["per_relation"].items()}
+
+    expected = {
+        "location lift": f"{w['r1']['lift']:.2f}×",
+        "promotion lift": f"{w['r6']['lift']:.2f}×",
+        "promotion edge share": f"{share['r6']:.0%}",
+        "location edge share": f"{share['r1']:.0%}",
+        "feature count": f"{len(FEATURE_NAMES)} features",
+    }
+    docs = {
+        "README.md": ROOT / "README.md",
+        "docs/architecture.md": ROOT / "docs" / "architecture.md",
+    }
+    stale = []
+    for name, path in docs.items():
+        text = path.read_text()
+        for what, want in expected.items():
+            if what == "feature count":
+                ok = want in text or f"{len(FEATURE_NAMES)} engineered" in text
+            else:
+                ok = want in text
+            if not ok:
+                stale.append(f"{name}: {what} should read {want!r}")
+    assert not stale, "prose has drifted from the artefacts:\n  " + "\n  ".join(stale)

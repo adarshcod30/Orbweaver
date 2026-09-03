@@ -47,7 +47,10 @@ the strand.
 4. **Attaches evidence** to each ring: what the members share, how rare it is,
    when they acted, the rupees at stake, and the cost of being wrong.
 
-`docs/architecture.md` walks through all of it.
+`docs/architecture.md` walks through all of it. It also runs a night at a time
+rather than only over a finished week, and what that costs is measured: one
+night of data puts the queue at chance, and it takes four to reach the headline
+number.
 
 ## Results
 
@@ -86,7 +89,7 @@ The findings I would lead with:
   single most important thing I learned building this.
 - **The relation that dominates the graph carries the weakest signal.**
   Promotion edges are 70% of the graph at 1.76× fraud lift; location edges are
-  16% at 3.68×. Weighting relations by measured evidential value, fitted on
+  16% at 3.71×. Weighting relations by measured evidential value, fitted on
   training accounts only, follows directly.
 - **The account scorer is honest but not strong** — AUPRC 1.69× random on
   held-out accounts, with no memorisation gap between held-out and
@@ -152,8 +155,21 @@ make download    # PPA from OSF, ~4 GB, resumable and md5-verified
 make reproduce   # everything, end to end
 ```
 
-`make test` runs the suite, including the temporal-split and planted-ring
-tests that gate every number.
+`make reproduce-core` runs the pipeline alone in about fifty minutes if you do
+not want the extra investigations. `make test` runs the suite, including the
+temporal-split and planted-ring tests that gate every number.
+
+To look at the output rather than the numbers:
+
+```bash
+make console     # review queue at http://127.0.0.1:8000
+```
+
+FastAPI serving HTML fragments to HTMX — no build step and no JavaScript
+bundle. `GET /check/{account}` answers for a single account in a fraction of a
+millisecond, which is the shape a per-transaction system would need. There is
+also `docs/case-files.html`, a standalone page with one card per ring that
+needs no server at all.
 
 ## Extending it
 

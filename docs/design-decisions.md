@@ -7,12 +7,21 @@ the most deliberate design decision in this project.
 
 | Stage | How it works | Learned? |
 |---|---|---|
-| Graph construction | Two accounts are linked when they share an entity; the edge weight is `1/log(2 + users(e))` | No — arithmetic |
+| Graph construction | Two accounts are linked when they share an entity; the edge weight is `alpha_r / log(2 + users(e))` | No — arithmetic, over one measured constant per relation |
 | Account scoring | XGBoost over 39 transaction and graph features, isotonic-calibrated | **Yes** |
 | Ring extraction | Greedy peeling on a density objective, with a proved approximation bound | No — deterministic |
 | Evidence | Shared entities, coverage, rarity, day concentration, counted from the orders | No — counting |
 | Rupees at stake and false-positive cost | Arithmetic over stated assumptions | No |
 | The decision to act | A human reads the case file | No |
+
+The one thing in that table worth pausing on is `alpha_r`. It is fitted — from
+how much more often each relation joins two known fraudsters than chance
+predicts, on training accounts only — so it is not quite bare arithmetic. It is
+five numbers, one per relation, each of which I can print and argue with, and
+it is refitted by `make windows-weighted` rather than tuned by hand. That is a
+different kind of object from a model with thousands of parameters, and the
+table says "arithmetic" on the strength of that difference rather than because
+nothing was measured.
 
 **A model scores accounts. It does not decide who is in a ring.** The ring is
 whatever the peeling objective returns, and that objective is forty lines of
@@ -71,8 +80,19 @@ Neighbour sampling bounds the batch instead of the graph. At fanout
 `[15, 10]` with 1024 seed accounts, a batch reaches at most ~170,000 edges —
 roughly **43 MB of messages** — and that figure does not change if the graph
 gets ten times larger. Measured peak resident memory for the whole training
-run, including the feature matrix and adjacency held in full, is **3.56 GB**,
-and it trains in about 95 seconds on the M4's GPU.
+run, including the feature matrix and adjacency held in full, is **5.42 GB**,
+and it trains in about 42 seconds.
+
+**It trains on the CPU, and that is a choice.** Metal's scatter reductions
+accumulate in a non-deterministic order, so the same seed on MPS produces a
+slightly different model every run: twelve identical training batches diverge
+by 6e-8 at batch seven, and across full runs held-out AUPRC moved between
+0.3825 and 0.3833. That spread is far too small to change any conclusion in
+this project, and still enough to break the promise that a run reproduces, so
+the default is the device that keeps it. Running the same job twice on the CPU
+gives byte-identical results and differs only in wall-clock seconds. MPS is
+roughly three times faster and is one environment variable away
+(`ORBWEAVER_SAGE_DEVICE=mps`) for anyone who would rather have the speed.
 
 The sampler is written by hand against a CSR adjacency
 (`orbweaver/scoring/sampler.py`, about forty lines) because PyTorch

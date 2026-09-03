@@ -928,3 +928,47 @@ latencies and the per-night seconds in the replay. Those are wall-clock
 measurements of the machine, they cannot reproduce byte for byte, and
 `docs/results.md` now says so at the top rather than leaving a reader to
 discover it in a diff.
+
+---
+
+## 3 September — the hand-written pages drifted, and the generated ones did not
+
+**What broke:** a read-through of the public documents as a first-time reader,
+checking every claim against the code and the artefacts rather than against my
+memory of them. Four claims had gone stale. Two documents quoted the location
+relation's fraud lift as 3.68× when the artefact says 3.7072. The design notes
+described the GraphSAGE scorer training in 95 seconds on the GPU with a peak of
+3.56 GB, when the recorded run is the CPU at 42 seconds, and measuring the
+memory properly gave 5.42 GB. The threat model said the method is not built
+for payment-instrument fraud, a day after I had run it on 590,540 card
+transactions and reported the result. And the README never mentioned that
+there is a console to look at.
+
+**What I believed:** that the prose documents were stable because they
+describe *design*, and design does not change when a run is repeated.
+
+**Why that was wrong:** they describe design *with numbers in it*, and every
+number typed into prose is a claim about a particular run that a later run can
+supersede. The GraphSAGE paragraph was written when the model trained on
+Metal; I moved it to the CPU for reproducibility and updated the code, the
+docstring and the generated results, and not the page that argues the design.
+The lift figure came from an earlier fit of the relation weights. Nothing
+regenerated those sentences because nothing generates them.
+
+**The pattern, which is the useful part:** every number that came out of
+`eval/report.py` was correct, in every document, on every check. Every stale
+number had been typed by a person. This project's rule that the README carries
+no hand-typed numbers was written for exactly this reason, and it had been
+applied to the README and the results and not to the three pages that explain
+them.
+
+**What fixed it:** the four claims, and a test that pins the numbers the
+prose *has* to quote — the two relation lifts, the two edge shares, the
+feature count — to the artefacts they come from, so the suite says which page
+has drifted rather than a reader finding it. The wall-clock and memory figures
+are not pinned, because they are the two kinds of number that legitimately
+differ between runs, and the design page now says so where it quotes them.
+
+**What I take from it:** a document I would not regenerate is a document I
+should test, and I had been treating "written by hand" as a reason to trust it
+rather than the opposite.
