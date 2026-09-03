@@ -1,0 +1,13 @@
+# Just enough to serve the committed demo bundle. No pandas, no xgboost, no
+# matplotlib - none of the pipeline is imported when the console reads the
+# bundle, so a deployment does not pay for them.
+#
+# pydantic and PyYAML are here because orbweaver/config.py is loaded by the
+# console to find the bundle and read the rupee assumptions; the four obvious
+# packages alone will not boot.
+fastapi==0.115.6
+uvicorn==0.34.0
+numpy==2.2.6
+pyarrow==24.0.0
+pydantic==2.11.3
+PyYAML==6.0.3

@@ -6,7 +6,7 @@ PY := python3
 .PHONY: help setup download schema data graph windows weights features subsample \
         windows-weighted score sage rings rings-deep hostel views adversarial overlay generalise \
         download-gadbench download-ieee-cis ieee-cis merchant-view replay \
-        ring-scorer ring-context twins anchored policy \
+        ring-scorer ring-context twins anchored policy demo-bundle \
         report reproduce reproduce-core test clean
 
 help:
@@ -105,6 +105,9 @@ anchored:  ## rings extracted around anchors, with case ids that survive the nig
 policy:  ## what to review, hold or ignore given an analyst's minutes
 	$(PY) -u -m orbweaver.rings.policy
 
+demo-bundle:  ## small committed bundle so the console runs without the dataset
+	$(PY) -u -m orbweaver.console.demo
+
 sage:  ## optional GraphSAGE scorer, reported beside the default one
 	$(PY) -u -m orbweaver.scoring.sage
 
@@ -131,7 +134,7 @@ reproduce-core: schema data graph windows-weighted test score sage rings rings-d
 # written before the six stages above it have produced anything, and the
 # sections that depend on them are quietly missing. Running it twice costs a
 # couple of minutes and is worth it.
-reproduce: reproduce-core merchant-view replay ring-scorer ring-context twins ieee-cis anchored policy  ## everything, end to end
+reproduce: reproduce-core merchant-view replay ring-scorer ring-context twins ieee-cis anchored policy demo-bundle  ## everything, end to end
 	$(PY) -u -m eval.report
 	@echo
 	@echo "reproduce complete. See docs/results.md"

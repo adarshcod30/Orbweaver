@@ -29,24 +29,57 @@ app = FastAPI(title="Orbweaver")
 # Built once at import, not per request. The whole point of /check is that a
 # per-transaction system could call it inside a request, and that is only true
 # if answering one account is array indexing rather than file reads.
-_INDEX: CheckIndex | None = None
+_INDEX = None
 
 
-def check_index() -> CheckIndex:
+def demo_mode() -> bool:
+    """Serve the committed bundle when there is no full run to serve from."""
+    from orbweaver.console import demo
+    return demo.should_use_demo(load_config())
+
+
+def check_index():
     """The route handler for "/" is also called index(), so this one is named
     apart from it - the collision silently shadowed this function."""
     global _INDEX
     if _INDEX is None:
-        _INDEX = CheckIndex(load_config())
+        if demo_mode():
+            from orbweaver.console.demo import DemoIndex
+            _INDEX = DemoIndex(load_config())
+        else:
+            _INDEX = CheckIndex(load_config())
     return _INDEX
 
 
 def load_report() -> dict:
     cfg = load_config()
-    path = cfg.abs_path(cfg.paths.processed) / "ring_report.json"
+    if demo_mode():
+        from orbweaver.console.demo import bundle_path
+        path = bundle_path(cfg) / "rings.json"
+    else:
+        path = cfg.abs_path(cfg.paths.processed) / "ring_report.json"
     if not path.exists():
         return {}
     return json.loads(path.read_text())
+
+
+def artefact(name: str) -> dict:
+    """A results artefact, from the bundle in demo mode and the run otherwise."""
+    cfg = load_config()
+    if demo_mode():
+        from orbweaver.console.demo import bundle_path
+        path = bundle_path(cfg) / name
+    else:
+        path = cfg.abs_path(cfg.paths.processed) / name
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+DEMO_BANNER = (
+    '<div class="assume"><strong>This is the demo bundle.</strong> The numbers, '
+    'rings and evidence are the real ones from a full run, but the graph itself '
+    'is not here - it is 35.7 million edges - so <code>/check</code> serves stored '
+    'neighbour counts rather than computing a ring around an account live. '
+    'Everything is reproducible from the raw data with <code>make reproduce</code>.</div>')
 
 
 EXTRA_CSS = """
@@ -109,8 +142,11 @@ def index() -> str:
 <p class="sub">Sorted by money at stake. Score cut-off τ = {esc(best.get('tau'))},
 λ = {esc(best.get('lambda'))}; ring precision {esc(best.get('ring_precision'))}
 against a base rate of {esc(report.get('base_rate_among_labelled'))}.</p>
+{DEMO_BANNER if demo_mode() else ""}
 <div class="assume">Leads for a human to review, not verdicts. Rupee figures use
 an assumed value — this dataset ships no monetary amounts.</div>
+<p class="sub"><a href="/findings">What this found, and what it did not</a> ·
+<a href="/health">health</a></p>
 <form class="controls" hx-get="/rings" hx-target="#rings" hx-trigger="change, load">
   <div><label>shares a</label><select name="shares">{opts}</select></div>
   <div><label>at least this many known fraud</label>
@@ -178,6 +214,85 @@ def check_card(account: int) -> str:
     return (f"<style>{CSS}</style><div class=\"wrap\">"
             f"{render_card(result)}"
             f"<p class=\"sub\">answered in {took:.1f} ms</p></div>")
+
+
+@app.get("/health")
+def health():
+    """Enough to tell a deployment apart from a broken one."""
+    from orbweaver.console.demo import available, bundle_path
+    cfg = load_config()
+    report = load_report()
+    ok = bool(report.get("case_files"))
+    out = {"ok": ok, "mode": "demo" if demo_mode() else "full run",
+           "rings": len(report.get("case_files", [])),
+           "bundle_present": available(cfg)}
+    if demo_mode():
+        meta = bundle_path(cfg) / "meta.json"
+        if meta.exists():
+            m = json.loads(meta.read_text())
+            out["accounts_served"] = m.get("accounts_in_bundle")
+            out["bundle_mb"] = round(m.get("bytes", 0) / 1e6, 2)
+    return out
+
+
+FIGURES = [
+    ("headline_precision_vs_cost.png",
+     "Ring precision against the cost of being wrong, across operating points."),
+    ("ring_persistence.png",
+     "Whether a ring found tonight existed last night, and when each was first seen."),
+    ("policy_frontier.png",
+     "What each review policy stops against what it harms, as the budget grows."),
+    ("time_to_detection.png", "Precision by how many nights of data have accumulated."),
+    ("merchant_vs_platform.png",
+     "What one business sees against what the platform sees, at equal review capacity."),
+    ("adversarial.png", "Precision as an attacker fragments the ring into smaller cells."),
+    ("relation_lift.png", "How much each kind of shared entity predicts fraud."),
+    ("ieee_relation_lift.png", "The same method on a payment processor's transactions."),
+    ("queue_by_ranking.png", "Three ways of ordering the review queue."),
+    ("ring_context.png", "Ring history as an account feature, and why it did nothing."),
+]
+
+
+@app.get("/findings", response_class=HTMLResponse)
+def findings() -> str:
+    """A read-only page of the figures, for someone who will not run anything."""
+    an, po = artefact("anchored.json"), artefact("policy.json")
+    lines = []
+    s_ = an.get("summary") or {}
+    if s_:
+        p3 = (s_.get("persistence_at_0.3") or {}).get("share_of_final_rings_with_a_predecessor")
+        d = s_.get("days_to_detection") or {}
+        if p3 is not None:
+            lines.append(f"{p3:.0%} of the rings found on the last night had a case open the "
+                         f"night before, and the median case was first seen on night "
+                         f"{d.get('median')} of {(an.get('window') or {}).get('nights')}.")
+    if po:
+        b = (po.get("final_night", {}).get("budgets") or {}).get("60", {})
+        if b:
+            c = b.get("capacity-aware", {})
+            lines.append(f"With one analyst for an hour a night, the review policy stops "
+                         f"₹{c.get('fraud_value_stopped_inr', 0):,.0f} of promotion value and "
+                         f"harms ₹{c.get('legitimate_value_harmed_inr', 0):,.0f} of legitimate "
+                         "value, on stated assumptions.")
+    figs = "".join(
+        f'<div class="card"><h2>{esc(name.replace("_", " ").replace(".png", ""))}</h2>'
+        f'<p class="note">{esc(caption)}</p>'
+        f'<img src="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/{name}" '
+        f'alt="{esc(caption)}" style="max-width:100%;border:1px solid var(--line);'
+        f'border-radius:8px;margin-top:10px"></div>'
+        for name, caption in FIGURES)
+    intro = "".join(f"<p>{esc(t)}</p>" for t in lines)
+    return f"""<!doctype html><meta charset="utf-8"><title>Orbweaver — findings</title>
+<style>{CSS}</style><div class="wrap">
+<h1>What this found, and what it did not</h1>
+<p class="sub">Every figure is regenerated by <code>make reproduce</code>; none of
+the numbers are typed in by hand. Three of the nine investigations returned
+negative results and they are reported alongside the rest.</p>
+{intro}
+{DEMO_BANNER if demo_mode() else ""}
+{figs}
+<p class="sub"><a href="/">Back to the review queue</a></p>
+</div>"""
 
 
 def main() -> None:

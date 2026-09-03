@@ -72,6 +72,10 @@ ARTEFACT_SECTIONS = {
     "policy.json": "## What to do with the queue, given a budget",
 }
 
+# The demo bundle has no artefact in data/processed - it *is* the artefact -
+# so it is checked by its own section rather than through ARTEFACT_SECTIONS.
+DEMO_SECTION = "## A demo anyone can click"
+
 
 def test_results_covers_every_artefact_on_disk():
     results = ROOT / "docs" / "results.md"
@@ -173,3 +177,13 @@ def test_prose_numbers_match_the_artefacts():
             if not ok:
                 stale.append(f"{name}: {what} should read {want!r}")
     assert not stale, "prose has drifted from the artefacts:\n  " + "\n  ".join(stale)
+
+
+def test_the_demo_section_is_present_when_the_bundle_is():
+    from orbweaver.console.demo import bundle_path
+    if not (bundle_path(CFG) / "meta.json").exists():
+        return
+    results = ROOT / "docs" / "results.md"
+    if results.exists():
+        assert DEMO_SECTION in results.read_text(), \
+            "the bundle is built but docs/results.md does not describe it"

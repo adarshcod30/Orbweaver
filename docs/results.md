@@ -391,6 +391,26 @@ By the last night that is ₹213,000 of promotion value stopped for ₹71,840 of
 
 Each case card now carries its recommended action and the two numbers behind it: what reviewing it is expected to be worth, and what auto-holding it is expected to be worth. A reviewer who disagrees can see exactly which of the two the recommendation turned on.
 
+## A demo anyone can click
+
+Everything above needs the raw dataset: four gigabytes from OSF, an hour of processing and about thirty gigabytes of free disk. That is a fair price for reproducing the numbers and an absurd one for looking at the thing. So the repository carries a small bundle of already-computed results, and the console serves them whenever `data/processed` is empty - no dataset, no pipeline, no build step.
+
+| file | size |
+|---|---:|
+| `accounts.parquet` | 0.38 MB |
+| `policy.json` | 0.06 MB |
+| `rings.json` | 0.06 MB |
+| `anchored.json` | 0.02 MB |
+| `replay.json` | 0.02 MB |
+| `hostel_test.json` | 0.00 MB |
+| **total** | **0.53 MB** of a 42 MB limit |
+
+It carries 50,000 accounts of the 3,267,961 in the run - every member of every ring the console shows (542 accounts) plus a random sample, so the page answers for ordinary accounts and not only for suspicious ones.
+
+**What is deliberately not in it: the graph.** Thirty-five million edges do not belong in something meant to be cloned, so in demo mode `/check` serves stored neighbour counts instead of computing a ring around an account live. The full console does that in about a millisecond; the demo says which one you are looking at rather than letting the distinction pass. Every page carries that notice.
+
+`requirements-demo.txt` is six packages and none of the pipeline: no pandas, no XGBoost, no matplotlib. It needs pydantic and PyYAML beside the obvious four because the console loads the project config to find the bundle and read the rupee assumptions.
+
 ## What the relations I cannot rebuild are worth
 
 Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:

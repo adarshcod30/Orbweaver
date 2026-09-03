@@ -11,10 +11,12 @@ What is in the bundle, and what is deliberately not:
 - the ring case files with their evidence, the anchored timelines and case
   ids, and the review policy's recommendations - all small JSON;
 - a sample of accounts with everything `/check` answers with: the score, the
-  label, neighbour counts, and ring membership. Every account that is in a
-  ring or in one of the legitimate co-located clusters is included, and the
-  rest of the sample is drawn at random so the page can answer for ordinary
-  accounts too;
+  label, neighbour counts, and ring membership. Every member of every ring the
+  console shows is in it - the case files and the anchored rings with their
+  case ids - and the rest of the sample is drawn at random so the page can
+  answer for ordinary accounts too. The legitimate co-located clusters are
+  summarised in the results rather than listed here, because the hostel test
+  records what it found about them and not which accounts they contain;
 - **not** the graph. Thirty-five million edges do not fit in a bundle meant to
   be cloned, so `/check` serves precomputed neighbour counts rather than
   recomputing a ring around an account. The full console does that live; the
@@ -128,14 +130,15 @@ def build(cfg: Config | None = None) -> dict:
     np.add.at(nbr_in_ring, dst, both[0])
 
     # Everyone interesting, then a random sample of everyone else.
+    # Every account the console can show must be answerable, or /check returns
+    # "not in the sample" for a ring the page is displaying. That means the
+    # case files and the anchored rings, whose members carry the case ids.
     must = [np.flatnonzero(ring_of >= 0)]
-    hp = proc / "hostel_test.json"
-    if hp.exists():
-        h = json.loads(hp.read_text())
-        for c in (h.get("clusters") or [])[:200]:
-            m = c.get("members") or c.get("members_sample") or []
-            if m:
-                must.append(np.asarray(m, dtype=np.int64))
+    ap = proc / "anchored.json"
+    if ap.exists():
+        for r in json.loads(ap.read_text()).get("final_rings", []):
+            if r.get("members"):
+                must.append(np.asarray(r["members"], dtype=np.int64))
     must_have = np.unique(np.concatenate(must)) if must else np.empty(0, dtype=np.int64)
 
     rng = np.random.default_rng(cfg.seed)
@@ -169,9 +172,11 @@ def build(cfg: Config | None = None) -> dict:
 
     files = sorted(f for f in dest.iterdir() if f.is_file() and f.name != "meta.json")
     total = sum(f.stat().st_size for f in files)
+    anchored_members = int(np.isin(keep, must_have).sum())
     meta = {
         "accounts_in_bundle": int(keep.size),
         "accounts_in_a_ring": int((ring_of[keep] >= 0).sum()),
+        "accounts_in_a_ring_or_an_anchored_ring": anchored_members,
         "total_accounts_in_the_run": int(n),
         "files": {f.name: f.stat().st_size for f in files},
         "bytes": int(total),
@@ -276,7 +281,8 @@ def main() -> None:
     for name, size in sorted(meta["files"].items(), key=lambda kv: -kv[1]):
         print(f"  {size / 1e6:7.2f} MB  {name}")
     print(f"accounts: {meta['accounts_in_bundle']:,} of {meta['total_accounts_in_the_run']:,}"
-          f" ({meta['accounts_in_a_ring']:,} of them in a ring)")
+          f" ({meta['accounts_in_a_ring_or_an_anchored_ring']:,} of them in a ring the "
+          f"console shows)")
     print(f"wrote {bundle_path(cfg)}")
 
 

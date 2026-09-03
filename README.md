@@ -167,6 +167,18 @@ To look at the output rather than the numbers:
 make console     # review queue at http://127.0.0.1:8000
 ```
 
+**Without downloading anything.** The repository carries a half-megabyte bundle
+of already-computed results, and the console serves it whenever `data/processed`
+is empty — so a clone, six packages and one command is the whole setup:
+
+```bash
+pip install -r requirements-demo.txt && make console
+```
+
+The pages say which mode they are in. In bundle mode `/check` returns stored
+neighbour counts rather than computing a ring around an account live, because
+35.7 million edges do not belong in something meant to be cloned.
+
 FastAPI serving HTML fragments to HTMX — no build step and no JavaScript
 bundle. `GET /check/{account}` answers for a single account in a fraction of a
 millisecond, which is the shape a per-transaction system would need. There is

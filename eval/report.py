@@ -860,6 +860,40 @@ def _policy_section(a, proc: Path) -> None:
       "A reviewer who disagrees can see exactly which of the two the recommendation turned on.\n")
 
 
+def _demo_section(a, cfg) -> None:
+    """The committed bundle, sized from what is actually on disk."""
+    from orbweaver.console.demo import MAX_BYTES, bundle_path
+    meta = bundle_path(cfg) / "meta.json"
+    if not meta.exists():
+        return
+    m = json.loads(meta.read_text())
+
+    a("## A demo anyone can click\n")
+    a("Everything above needs the raw dataset: four gigabytes from OSF, an hour of processing "
+      "and about thirty gigabytes of free disk. That is a fair price for reproducing the numbers "
+      "and an absurd one for looking at the thing. So the repository carries a small bundle of "
+      "already-computed results, and the console serves them whenever `data/processed` is empty "
+      "- no dataset, no pipeline, no build step.\n")
+    a(f"| file | size |")
+    a("|---|---:|")
+    for name, size in sorted(m["files"].items(), key=lambda kv: -kv[1]):
+        a(f"| `{name}` | {size / 1e6:.2f} MB |")
+    a(f"| **total** | **{m['bytes'] / 1e6:.2f} MB** of a {MAX_BYTES / 1e6:.0f} MB limit |")
+    a("")
+    a(f"It carries {m['accounts_in_bundle']:,} accounts of the "
+      f"{m['total_accounts_in_the_run']:,} in the run - every member of every ring the console "
+      f"shows ({m['accounts_in_a_ring_or_an_anchored_ring']:,} accounts) plus a random sample, so "
+      "the page answers for ordinary accounts and not only for suspicious ones.\n")
+    a("**What is deliberately not in it: the graph.** Thirty-five million edges do not belong in "
+      "something meant to be cloned, so in demo mode `/check` serves stored neighbour counts "
+      "instead of computing a ring around an account live. The full console does that in about a "
+      "millisecond; the demo says which one you are looking at rather than letting the "
+      "distinction pass. Every page carries that notice.\n")
+    a("`requirements-demo.txt` is six packages and none of the pipeline: no pandas, no XGBoost, "
+      "no matplotlib. It needs pydantic and PyYAML beside the obvious four because the console "
+      "loads the project config to find the bundle and read the rupee assumptions.\n")
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -1413,6 +1447,7 @@ def write_results(cfg, score: dict | None, ring: dict | None,
     if views and views.get("delta"):
         _anchored_section(a, proc)
         _policy_section(a, proc)
+        _demo_section(a, cfg)
         a("## What the relations I cannot rebuild are worth\n")
         a("Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at "
           "all in the released order files, so a graph built from those files "
