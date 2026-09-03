@@ -400,7 +400,15 @@ def write_results(cfg, score: dict | None, ring: dict | None,
       "file exactly, with two deliberate exceptions: the `/check` latencies "
       "and the per-night seconds in the replay are wall-clock measurements of "
       "the machine that ran them, and will differ on yours. Everything else is "
-      "derived from the data and should match byte for byte.\n")
+      "derived from the data and should match byte for byte - I have checked "
+      "that against clean clones rather than assuming it.\n")
+    a("Treat the two timing figures as the order of magnitude and nothing "
+      "finer. Three full runs on the same laptop put the nightly snapshot "
+      "between 96 and 208 seconds, the spread being thermal rather than "
+      "algorithmic, and the per-account lookup moved by a similar factor. The "
+      "conclusions drawn from them - that a nightly pass is cheap, and that a "
+      "single lookup is not a file read - hold comfortably across that whole "
+      "range, which is the only reason they are quoted at all.\n")
 
     if ring:
         g = ring["graph"]
