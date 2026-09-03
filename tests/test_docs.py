@@ -68,6 +68,7 @@ ARTEFACT_SECTIONS = {
     "ring_context.json": "## Feeding the web back into the strand",
     "twins.json": "## Edges an attacker cannot cut",
     "ieee_cis.json": "## A payment processor's graph",
+    "anchored.json": "## A ring you can find again tomorrow",
 }
 
 
@@ -105,6 +106,7 @@ ARTEFACT_FIGURES = {
     "ring_context.json": "ring_context.png",
     "twins.json": "adversarial.png",
     "ieee_cis.json": "ieee_relation_lift.png",
+    "anchored.json": "ring_persistence.png",
 }
 
 

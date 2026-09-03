@@ -972,3 +972,42 @@ differ between runs, and the design page now says so where it quotes them.
 **What I take from it:** a document I would not regenerate is a document I
 should test, and I had been treating "written by hand" as a reason to trust it
 rather than the opposite.
+
+---
+
+## 3 September — I set up the same unfair comparison twice
+
+**What broke:** the comparison that justifies anchored ring extraction. Anchoring
+exists because global peeling's rings do not survive a night, so the number that
+matters is what share of tonight's rings have a recognisable predecessor. I
+computed it for anchoring by matching each ring against **last night's** rings,
+because that is what the tracker holds — a front is one night old. For global
+peeling I reused the replay's existing figure, which is each final ring's best
+overlap with **any** earlier night. Anchored 43.7%, global 4%, and I nearly
+wrote that down.
+
+**What I believed:** that both sides were answering "does this ring have a
+predecessor", so the two numbers could sit in the same table.
+
+**Why that was wrong:** global peeling was being given three nights to find a
+match and anchoring was being given one. The bar was lower for the thing I was
+arguing against, which happens to be the direction that makes my own result look
+*worse*, not better — but it is the same defect either way, and if the sign had
+gone the other way I would have published a comparison that flattered me.
+
+**What fixed it:** computing global peeling's persistence against the previous
+night alone, which is the test anchoring actually faces. On that footing no
+global ring has a predecessor at either threshold — 0%, against anchoring's
+43.7% — and the median overlap with last night is 0.090 against 0.6. Both
+columns are in the results table now, the generous one beside the like-for-like
+one, so a reader can see the comparison was not chosen to suit the conclusion.
+
+**What I take from it:** this is the second time in two days. The first was the
+merchant-versus-platform arms, where I compared review queues holding the ring
+count fixed instead of the number of accounts reviewed and got the sign
+backwards. Same shape both times: two systems measured under conditions that
+were not equal, where the inequality was hidden inside a number I had computed
+earlier for a different purpose. Reusing a metric across an experiment boundary
+is where this keeps entering. I now write down what each side is allowed to see
+before I compare them, and if the two sentences are not identical the comparison
+is not ready.

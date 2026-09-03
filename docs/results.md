@@ -263,6 +263,64 @@ I wanted to report days-to-detection per ring: the night each of the final rings
 
 So the honest version of the question drops group identity and asks how much of each final ring was already being surfaced *somewhere* on an earlier night. By that measure **28% of the final rings had half their members already inside some surfaced ring before the last night**, and at that point 37% of their promotion spend was still ahead of them. That is the number a team could act on, and it is much weaker than the one I set out to report.
 
+## A ring you can find again tomorrow
+
+The nightly replay found that ring identity does not survive a night. Peeling is a global optimisation, so one more day of edges shifts densities everywhere and the top rings are recomposed rather than extended: the best overlap between a final ring and anything from an earlier night was a median Jaccard of 0.124, and not one ring had a predecessor at the 0.5 the replay required. An operations team cannot open a case on Monday and find it on Tuesday, and days-to-detection could not be measured.
+
+So this extracts rings **around anchors** instead - the anchored densest subgraph of Dai, Qiao, Chang and Qin (SIGMOD 2022), in its strict form. For an anchor account the candidate set is the ball `{a} ∪ N(a) ∪ N²(a)` inside the reference set R = {accounts with score > 0.5}, capped at 3,000 nodes by descending edge weight, and greedy peeling runs on that ball with the anchor pinned so it is never removed. Because the ball is intersected with R first, the outsider penalty in their objective vanishes and it reduces to the weighted density used everywhere else here; that is the special case in which outsiders are forbidden rather than penalised. Anchors each night are the top 500 accounts by score inside R plus every member of last night's rings, so a case has something to be found again from. Rings from different anchors that overlap at Jaccard 0.5 are one ring, kept under its highest-scoring anchor.
+
+Identity from one night to the next follows Greene, Doyle and Cunningham (ASONAM 2010): tonight's rings are matched to last night's by Jaccard above θ, each is assigned one of born / continued / merged / split / died, and a case id is carried along the timeline from the first ring in it. They used θ = 0.3; both 0.3 and 0.5 are reported. A ring unobserved for 1 night is dead.
+
+| night | reference set | anchors | rings found | after de-duplication | median ring size | precision, top 25 | real customers per catch | extract (s) |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 52,699 | 500 | 498 | 146 | 34 | 0.3035 | 2.295 | 0.5 |
+| 2 | 62,982 | 1,794 | 1,608 | 246 | 14 | 0.5506 | 0.816 | 1.6 |
+| 3 | 65,858 | 1,827 | 1,454 | 288 | 6 | 0.4839 | 1.067 | 1.3 |
+| 4 | 78,089 | 1,974 | 1,534 | 334 | 6 | 0.7167 | 0.395 | 3.4 |
+
+**Does it survive the night?** The anchored tracker only ever matches a ring against *last night*, because a front is one night old. Comparing that against global peeling's best overlap with **any** earlier night would be an easier test for global than for anchored, so the like-for-like column restricts global to the same single night; the looser number is kept beside it so the comparison cannot be accused of being rigged.
+
+| final rings with a predecessor | global, previous night only | global, any earlier night | anchored |
+|---|---:|---:|---:|
+| θ = 0.3 (Greene et al.) | 0% | 4% | **44%** |
+| θ = 0.5 | 0% | 0% | **27%** |
+| median overlap with the predecessor | 0.09 | 0.124 | **0.6** |
+
+Given the same one night that anchoring gets, **no** global ring has a predecessor at either threshold, and its median overlap with last night is 0.09. Anchored rings match at a median Jaccard of 0.6 - not the same set of accounts, but recognisably the same group, which is what a case id has to mean.
+
+On the final night at θ = 0.3, of 25 ranked rings the tracker saw 134 continued, 3 merged, 9 split and 188 born, with 149 of the previous night's rings dying and 2 absorbed.
+
+**Days to detection, which is now measurable.** Each final ring's timeline has a first night, and that is when a case with this id first existed.
+
+| first seen on | final rings |
+|---|---:|
+| night 1 of 4 | 0 |
+| night 2 of 4 | 6 |
+| night 3 of 4 | 10 |
+| night 4 of 4 | 9 |
+
+Median 3 of 4 nights, range 2-4; **64% of the final rings had a case open before the last night**, against 0% under global peeling. When a case first opened, **55.2% of its promotion spend was still ahead of it** (₹42,200 of ₹76,500, on the stated ₹-per-promotion assumption) - the part an intervention could have reached. A ring that was split off another timeline counts as born on the night of the split, which is the strict reading; its members were visible inside the parent before that.
+
+**Precision on the final night, against the global extractor.** Same night, same operating point, top 25 by density in both cases.
+
+| | ring precision | real customers per catch | fraud accounts found |
+|---|---:|---:|---:|
+| global peeling | **0.7292** | 0.371 | — |
+| anchored | **0.7167** | 0.395 | 86 |
+| anchored, ranked by mean member score | 0.6364 | 0.571 | 35 |
+
+Anchored is **+0.0125 worse** on precision. That is the expected direction and the reason is structural: each anchored ring is a local optimum on a ball of at most 3,000 nodes, where global peeling optimises over the whole pruned graph; and the anchors are chosen by score, so anchoring inherits every bias the scorer has. What is bought with that precision is the case id - a ring that exists tomorrow - and the section above is the measurement of whether that trade is worth making.
+
+**How many anchors.** N's effect on the final night, top-N anchors only:
+
+| anchors | rings found | after de-duplication | precision, top 25 | real customers per catch | seconds |
+|---:|---:|---:|---:|---:|---:|
+| 200 | 80 | 61 | 0.6981 | 0.432 | 0.1 |
+| 500 | 206 | 133 | 0.8875 | 0.127 | 0.3 |
+| 1,000 | 412 | 244 | 0.7215 | 0.386 | 0.7 |
+
+**On demand.** `GET /check/{account}` now computes the ring around the account live from its ball, when the account is inside R, and returns it with its case id and first-seen night. Over 1,000 anchors: **p50 0.063 ms, p95 1.256 ms**, worst 6.234 ms. A full night's extraction over every anchor takes 3.4 s on top of building the night's graph.
+
 ## What the relations I cannot rebuild are worth
 
 Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at all in the released order files, so a graph built from those files carries five. The authors' shipped `edge.csv` carries all eight. Same extractor, same scores, same operating point, two graphs:
@@ -438,5 +496,7 @@ The separator is the **account score**, not the structure — the touched cluste
 ![merchant_vs_platform](figures/merchant_vs_platform.png)
 
 ![ring_context](figures/ring_context.png)
+
+![ring_persistence](figures/ring_persistence.png)
 
 ![adversarial](figures/adversarial.png)

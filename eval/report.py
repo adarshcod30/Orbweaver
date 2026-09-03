@@ -463,6 +463,206 @@ def ring_context_chart(rc: dict, out: Path) -> Path | None:
     return dest
 
 
+def ring_persistence_chart(an: dict, out: Path) -> Path | None:
+    """Left: does a ring found tonight have a predecessor from last night -
+    anchored extraction per night at both thresholds, against what global
+    peeling managed on the final night. Right: on which night each final ring
+    was first seen, with how much of its spend was still ahead of it then.
+    """
+    tl = an.get("timelines") or {}
+    t03, t05 = tl.get("0.3") or [], tl.get("0.5") or []
+    if len(t03) < 2:
+        return None
+    g = an.get("global_peeling_from_replay") or {}
+    final = an.get("final_rings") or []
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160)
+
+    ax = axes[0]
+    _style(ax)
+    nights = [r["night"] for r in t03[1:]]
+    x = np.arange(len(nights))
+    w = 0.36
+    ax.bar(x - w / 2, [r["share_with_a_predecessor"] or 0 for r in t03[1:]], w,
+           color=ACCENT, label="anchored, θ = 0.3")
+    ax.bar(x + w / 2, [r["share_with_a_predecessor"] or 0 for r in t05[1:]], w,
+           color=MUTED, label="anchored, θ = 0.5")
+    # The reference lines use global peeling's *most generous* score - its best
+    # overlap with any earlier night, not just the previous one - because that
+    # is the version that flatters the thing being compared against.
+    if g.get("share_with_a_predecessor_at_0.3") is not None:
+        ax.axhline(g["share_with_a_predecessor_at_0.3"], color=INK, linewidth=1.0,
+                   linestyle="--", label="global peeling, best of any earlier night, θ = 0.3")
+    if g.get("share_with_a_predecessor_at_0.5") is not None:
+        ax.axhline(g["share_with_a_predecessor_at_0.5"], color=INK, linewidth=1.0,
+                   linestyle=":", label="global peeling, best of any earlier night, θ = 0.5")
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"night {n}" for n in nights])
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("share of tonight's rings with a predecessor", fontsize=10, color=INK)
+    ax.set_title("Does the ring survive the night?", color=INK, fontsize=12, loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+
+    ax = axes[1]
+    _style(ax)
+    n_nights = an["window"]["nights"]
+    counts = [sum(1 for r in final if r["days_to_detection"] == k) for k in range(1, n_nights + 1)]
+    ahead = []
+    for k in range(1, n_nights + 1):
+        rows = [r for r in final if r["days_to_detection"] == k and r["share_still_ahead_when_first_seen"] is not None]
+        ahead.append(float(np.mean([r["share_still_ahead_when_first_seen"] for r in rows])) if rows else None)
+    xs = np.arange(1, n_nights + 1)
+    ax.bar(xs, counts, color=ACCENT, width=0.6)
+    ax.set_xticks(xs)
+    ax.set_xticklabels([f"night {k}" for k in xs])
+    ax.set_ylabel("final rings first seen that night", fontsize=10, color=INK)
+    ax.set_title("When each final ring was first seen", color=INK, fontsize=12, loc="left", pad=10)
+    for k, c, a_ in zip(xs, counts, ahead):
+        if c:
+            lab = f"{c}" + (f"\n{a_:.0%} of spend\nstill ahead" if a_ is not None else "")
+            ax.annotate(lab, xy=(k, c), xytext=(0, 4), textcoords="offset points",
+                        ha="center", fontsize=8, color=INK)
+    ax.set_ylim(0, max(counts + [1]) * 1.45)
+
+    fig.tight_layout()
+    dest = out / "ring_persistence.png"
+    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return dest
+
+
+def _anchored_section(a, proc: Path) -> None:
+    """The section for rings extracted around anchors, with case ids."""
+    f = proc / "anchored.json"
+    if not f.exists():
+        return
+    an = json.loads(f.read_text())
+    s = an["summary"]; g = an.get("global_peeling_from_replay") or {}
+    fn = s["final_night"]; d = an["design"]; op = an["operating_point"]
+    p3, p5 = s["persistence_at_0.3"], s["persistence_at_0.5"]
+    dtd = s["days_to_detection"]; lat = an["on_demand_latency_ms"]
+    nights = an["nights"]; n_nights = an["window"]["nights"]
+
+    a("## A ring you can find again tomorrow\n")
+    a("The nightly replay found that ring identity does not survive a night. Peeling is a "
+      "global optimisation, so one more day of edges shifts densities everywhere and the top "
+      "rings are recomposed rather than extended: the best overlap between a final ring and "
+      f"anything from an earlier night was a median Jaccard of {g.get('median_best_overlap_with_an_earlier_night')}, "
+      "and not one ring had a predecessor at the 0.5 the replay required. An operations team "
+      "cannot open a case on Monday and find it on Tuesday, and days-to-detection could not be "
+      "measured.\n")
+    a("So this extracts rings **around anchors** instead - the anchored densest subgraph of Dai, "
+      "Qiao, Chang and Qin (SIGMOD 2022), in its strict form. For an anchor account the candidate "
+      "set is the ball `{a} ∪ N(a) ∪ N²(a)` inside the reference set R = {accounts with score > "
+      f"{op['tau']}}}, capped at {d['ball_cap']:,} nodes by descending edge weight, and greedy peeling "
+      "runs on that ball with the anchor pinned so it is never removed. Because the ball is "
+      "intersected with R first, the outsider penalty in their objective vanishes and it reduces "
+      "to the weighted density used everywhere else here; that is the special case in which "
+      "outsiders are forbidden rather than penalised. Anchors each night are the top "
+      f"{d['n_anchors']} accounts by score inside R plus every member of last night's rings, so a "
+      "case has something to be found again from. Rings from different anchors that overlap at "
+      f"Jaccard {d['dedupe_jaccard']} are one ring, kept under its highest-scoring anchor.\n")
+    a("Identity from one night to the next follows Greene, Doyle and Cunningham (ASONAM 2010): "
+      "tonight's rings are matched to last night's by Jaccard above θ, each is assigned one of "
+      "born / continued / merged / split / died, and a case id is carried along the timeline "
+      f"from the first ring in it. They used θ = 0.3; both 0.3 and 0.5 are reported. A ring "
+      f"unobserved for {d['death_after_unobserved_nights']} night is dead.\n")
+
+    a("| night | reference set | anchors | rings found | after de-duplication | "
+      "median ring size | precision, top 25 | real customers per catch | extract (s) |")
+    a("|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for r in nights:
+        m = r["final_night"]
+        a(f"| {r['night']} | {r['reference_set']:,} | {r['anchors']:,} | {r['rings_found']:,} | "
+          f"{r['rings_after_dedupe']:,} | {r['median_ring_size']:.0f} | {m['ring_precision']} | "
+          f"{m['normal_flagged_per_fraud_caught']} | {r['seconds']['extract_all']} |")
+    a("")
+
+    a("**Does it survive the night?** The anchored tracker only ever matches a ring against *last "
+      "night*, because a front is one night old. Comparing that against global peeling's best "
+      "overlap with **any** earlier night would be an easier test for global than for anchored, so "
+      "the like-for-like column restricts global to the same single night; the looser number is "
+      "kept beside it so the comparison cannot be accused of being rigged.\n")
+    po = g.get("previous_night_only") or {}
+    a("| final rings with a predecessor | global, previous night only | global, any earlier night | anchored |")
+    a("|---|---:|---:|---:|")
+    a(f"| θ = 0.3 (Greene et al.) | {po.get('share_with_a_predecessor_at_0.3', 0):.0%} | "
+      f"{g.get('share_with_a_predecessor_at_0.3', 0):.0%} | "
+      f"**{p3['share_of_final_rings_with_a_predecessor']:.0%}** |")
+    a(f"| θ = 0.5 | {po.get('share_with_a_predecessor_at_0.5', 0):.0%} | "
+      f"{g.get('share_with_a_predecessor_at_0.5', 0):.0%} | "
+      f"**{p5['share_of_final_rings_with_a_predecessor']:.0%}** |")
+    a(f"| median overlap with the predecessor | {po.get('median_overlap')} | "
+      f"{g.get('median_best_overlap_with_an_earlier_night')} | "
+      f"**{p3['median_jaccard_of_continued']}** |")
+    a("")
+    a("Given the same one night that anchoring gets, **no** global ring has a predecessor at either "
+      "threshold, and its median overlap with last night is "
+      f"{po.get('median_overlap')}. Anchored rings match at a median Jaccard of "
+      f"{p3['median_jaccard_of_continued']} - not the same set of accounts, but recognisably the "
+      "same group, which is what a case id has to mean.\n")
+    ev = s["events_on_the_final_night_at_0.3"]
+    a(f"On the final night at θ = 0.3, of {fn['rings_ranked']} ranked rings the tracker saw "
+      f"{ev['continued']} continued, {ev['merged']} merged, {ev['split']} split and {ev['born']} born, "
+      f"with {ev['died']} of the previous night's rings dying and {ev['merged_into']} absorbed.\n")
+
+    a("**Days to detection, which is now measurable.** Each final ring's timeline has a first "
+      "night, and that is when a case with this id first existed.\n")
+    a("| first seen on | final rings |")
+    a("|---|---:|")
+    for k in range(1, n_nights + 1):
+        a(f"| night {k} of {n_nights} | {dtd['histogram'].get(str(k), 0)} |")
+    a("")
+    a(f"Median {dtd['median']:.0f} of {n_nights} nights, range {dtd['min']}-{dtd['max']}; "
+      f"**{dtd['share_seen_before_the_last_night']:.0%} of the final rings had a case open before the last night**, "
+      f"against 0% under global peeling. When a case first opened, "
+      f"**{s['share_of_ring_spend_still_ahead_when_first_seen']:.1%} of its promotion spend was still ahead of it** "
+      f"(₹{s['spend_on_or_after_first_seen_inr']:,.0f} of ₹{s['total_window_spend_inr']:,.0f}, on the stated "
+      "₹-per-promotion assumption) - the part an intervention could have reached. A ring that was "
+      "split off another timeline counts as born on the night of the split, which is the strict "
+      "reading; its members were visible inside the parent before that.\n")
+
+    gp, gc = g.get("final_night_precision"), g.get("final_night_normal_flagged_per_fraud_caught")
+    ap, ac = fn["ring_precision"], fn["normal_flagged_per_fraud_caught"]
+    a("**Precision on the final night, against the global extractor.** Same night, same "
+      "operating point, top 25 by density in both cases.\n")
+    a("| | ring precision | real customers per catch | fraud accounts found |")
+    a("|---|---:|---:|---:|")
+    a(f"| global peeling | **{gp}** | {gc} | — |")
+    a(f"| anchored | **{ap}** | {ac} | {fn['fraud_members']} |")
+    bm = fn["by_mean_member_score"]
+    a(f"| anchored, ranked by mean member score | {bm['ring_precision']} | {bm['normal_flagged_per_fraud_caught']} | {bm['fraud_members']} |")
+    a("")
+    if gp is not None and ap is not None:
+        if ap < gp:
+            a(f"Anchored is **{gp - ap:+.4f} worse** on precision. That is the expected direction and "
+              "the reason is structural: each anchored ring is a local optimum on a ball of at most "
+              f"{d['ball_cap']:,} nodes, where global peeling optimises over the whole pruned graph; and "
+              "the anchors are chosen by score, so anchoring inherits every bias the scorer has. "
+              "What is bought with that precision is the case id - a ring that exists tomorrow - and "
+              "the section above is the measurement of whether that trade is worth making.\n")
+        else:
+            a(f"Anchored is **{ap - gp:+.4f}** on precision, which I did not expect: a local optimum "
+              "on a ball is not supposed to beat a global one. The likely reason is the size band - "
+              "the ball caps how far a ring can spread, and global peeling on this graph tends to "
+              "return larger, looser rings near the top. I would not lean on the sign without more "
+              "nights.\n")
+
+    a("**How many anchors.** N's effect on the final night, top-N anchors only:\n")
+    a("| anchors | rings found | after de-duplication | precision, top 25 | real customers per catch | seconds |")
+    a("|---:|---:|---:|---:|---:|---:|")
+    for r in an["anchor_sweep_final_night"]:
+        a(f"| {r['n_anchors']:,} | {r['rings_found']:,} | {r['rings_after_dedupe']:,} | {r['ring_precision']} | "
+          f"{r['normal_flagged_per_fraud_caught']} | {r['seconds']} |")
+    a("")
+
+    a("**On demand.** `GET /check/{account}` now computes the ring around the account live from its "
+      f"ball, when the account is inside R, and returns it with its case id and first-seen night. Over "
+      f"{lat['samples']:,} anchors: **p50 {lat['p50']} ms, p95 {lat['p95']} ms**, worst {lat['max']} ms. "
+      f"A full night's extraction over every anchor takes {nights[-1]['seconds']['extract_all']} s on "
+      f"top of building the night's graph.\n")
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -1014,6 +1214,7 @@ def write_results(cfg, score: dict | None, ring: dict | None,
     if vp.exists():
         views = json.loads(vp.read_text())
     if views and views.get("delta"):
+        _anchored_section(a, proc)
         a("## What the relations I cannot rebuild are worth\n")
         a("Three of PPA's eight relations — `r2`, `r4`, `r5` — have no values at "
           "all in the released order files, so a graph built from those files "
@@ -1466,6 +1667,16 @@ def update_readme(cfg, score, ring, views) -> Path | None:
                  f"its base rate, at {r['normal_flagged_per_fraud_caught']} good "
                  f"cards per fraudulent one caught |")
 
+    an = artefact("anchored.json")
+    if an:
+        s_ = an["summary"]; g_ = an.get("global_peeling_from_replay") or {}
+        p3 = s_["persistence_at_0.3"]["share_of_final_rings_with_a_predecessor"]
+        L.append(f"| A ring you can find again tomorrow | {p3:.0%} of final rings had a "
+                 f"case open the night before (global peeling: "
+                 f"{g_.get('share_with_a_predecessor_at_0.3', 0):.0%}); "
+                 f"{s_['final_night']['ring_precision']} precision against "
+                 f"{g_.get('final_night_precision')} for the cost of a case id |")
+
     L += ["", end]
 
     head, rest = text.split(start, 1)
@@ -1518,6 +1729,11 @@ def main() -> None:
     rcj = proc / "ring_context.json"
     if rcj.exists():
         d = ring_context_chart(json.loads(rcj.read_text()), figs)
+        if d:
+            figures.append(d)
+    anj = proc / "anchored.json"
+    if anj.exists():
+        d = ring_persistence_chart(json.loads(anj.read_text()), figs)
         if d:
             figures.append(d)
     fragj = proc / "fragmentation.json"
