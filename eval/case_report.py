@@ -134,6 +134,8 @@ box-shadow 200ms var(--ease),background 200ms var(--ease),color 200ms var(--ease
 @media (prefers-reduced-motion:reduce){*{animation:none!important;
 transition:none!important}}
 @media (max-width:768px){
+/* an odd final stat would otherwise leave an empty grey cell in the grid */
+.stat:last-child:nth-child(odd){grid-column:1/-1}
 .wrap{padding:24px 16px 56px}
 h1{font-size:25px}
 .lede{font-size:16.5px}

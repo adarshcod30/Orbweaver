@@ -244,7 +244,7 @@ members share, how rare it is, and the action the policy recommends.</p>
   <div><label>at least this many known fraud</label>
     <input type="number" name="min_fraud" value="0" min="0" style="width:90px"></div>
 </form>
-<div id="rings"></div>
+<div id="rings">{ring_rows(report, "any", 0)}</div>
 <div id="detail"></div>"""
     return page("Orbweaver — ring review queue",
                 "The review queue an analyst would actually be handed: "
@@ -307,7 +307,7 @@ into the ranking.</div>
   <div><label>at least this many redeemers</label>
     <input type="number" name="min_redeemers" value="5" min="1" style="width:90px"></div>
 </form>
-<div id="offers"></div>
+<div id="offers">{offer_rows(out, "ring_share", 5)}</div>
 <div id="detail"></div>"""
     return page("Orbweaver — offers",
                 f"{out['n_offers']:,} promotions ranked by leakage, with no "
