@@ -10,6 +10,53 @@ Each entry records what I believed, why it was wrong, and what fixed it.
 - **A rewrite the tests missed** — a fresh clone produced a number my own machine no longer did, because the rewrite was checked by its tests but published by a file the rewrite never touched. [Read it →](#4-september--the-fresh-clone-caught-a-number-my-own-machine-had-stopped-producing)
 - **The hostel test came back clean** — time alone did not separate the hostel from the ring even where the data gave it every chance to, and the fair test built for exactly that weakness returned a clean null. [Read it →](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to)
 - **Propagation ran backwards** — belief propagation lost when labels were scarce and only won once they were not, the opposite of the stated hypothesis, with the real mechanism not the one written down beforehand. [Read it →](#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not)
+
+### All 36 entries
+
+<details>
+<summary><b>Open the full index</b> — every entry, dated, newest work last</summary>
+
+| When | What broke |
+|---|---|
+| 2 September | [The first version of this project was the wrong project](#2-september--the-first-version-of-this-project-was-the-wrong-project) |
+| 2 September | [A column that was full of values it did not have](#2-september--a-column-that-was-full-of-values-it-did-not-have) |
+| 2 September | [The dataset is not the dataset in the paper](#2-september--the-dataset-is-not-the-dataset-in-the-paper) |
+| 2 September | [My entity cap was eight times too loose](#2-september--my-entity-cap-was-eight-times-too-loose) |
+| 2 September | [I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) |
+| 2 September | [`make reproduce` worked on my machine and nowhere else](#2-september--make-reproduce-worked-on-my-machine-and-nowhere-else) |
+| 3 September | [A feature that is zero for 99% of accounts cannot help](#3-september--a-feature-that-is-zero-for-99-of-accounts-cannot-help) |
+| 3 September | [The model I built lost to the baseline I almost did not run](#3-september--the-model-i-built-lost-to-the-baseline-i-almost-did-not-run) |
+| 3 September | [Rings do not survive the night](#3-september--rings-do-not-survive-the-night) |
+| 2 September | [The one part of the pipeline that was not reproducible](#2-september--the-one-part-of-the-pipeline-that-was-not-reproducible) |
+| 2 September | [I gave up on the generalisation check too early](#2-september--i-gave-up-on-the-generalisation-check-too-early) |
+| 2 September | [I could not run the authors' checkpoint, and stopped trying](#2-september--i-could-not-run-the-authors-checkpoint-and-stopped-trying) |
+| 2 September | [The densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) |
+| 2 September | [The extractor found a ring with 31,555 members](#2-september--the-extractor-found-a-ring-with-31555-members) |
+| 2 September | [The subsample quietly destroyed the rings](#2-september--the-subsample-quietly-destroyed-the-rings) |
+| 3 September | [I measured two systems at two different budgets and read the sign backwards](#3-september--i-measured-two-systems-at-two-different-budgets-and-read-the-sign-backwards) |
+| 3 September | [Behavioural edges helped most where the graph was already ruined](#3-september--behavioural-edges-helped-most-where-the-graph-was-already-ruined) |
+| 3 September | [The most useful relation is the one that ties innocent people together](#3-september--the-most-useful-relation-is-the-one-that-ties-innocent-people-together) |
+| 3 September | [`make reproduce` wrote a third of the report before the work existed](#3-september--make-reproduce-wrote-a-third-of-the-report-before-the-work-existed) |
+| 3 September | [The hand-written pages drifted, and the generated ones did not](#3-september--the-hand-written-pages-drifted-and-the-generated-ones-did-not) |
+| 3 September | [I set up the same unfair comparison twice](#3-september--i-set-up-the-same-unfair-comparison-twice) |
+| 3 September | [I built a review queue for a reviewer who turns out not to be the bottleneck](#3-september--i-built-a-review-queue-for-a-reviewer-who-turns-out-not-to-be-the-bottleneck) |
+| 3 September | [I shipped a demo that could not possibly work](#3-september--i-shipped-a-demo-that-could-not-possibly-work) |
+| 3 September | [A display cap quietly deleted a feature](#3-september--a-display-cap-quietly-deleted-a-feature) |
+| 3 September | [I fixed the ordering bug and left half of it broken](#3-september--i-fixed-the-ordering-bug-and-left-half-of-it-broken) |
+| 4 September | [The null model I built to remove a size bias had one of its own](#4-september--the-null-model-i-built-to-remove-a-size-bias-had-one-of-its-own) |
+| 4 September | [A function nobody had called on an empty relation](#4-september--a-function-nobody-had-called-on-an-empty-relation) |
+| 4 September | [Time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) |
+| 4 September | ["every offer" turned out to mean five million rows, most of them noise or a default value](#4-september--every-offer-turned-out-to-mean-five-million-rows-most-of-them-noise-or-a-default-value) |
+| 4 September | [I persisted the wrong five hundred offers for the page that ranks them by leakage](#4-september--i-persisted-the-wrong-five-hundred-offers-for-the-page-that-ranks-them-by-leakage) |
+| 4 September | [I called a single noisy step "diminishing returns"](#4-september--i-called-a-single-noisy-step-diminishing-returns) |
+| 4 September | [I capped a homophily factor exactly on the boundary the theorem excludes](#4-september--i-capped-a-homophily-factor-exactly-on-the-boundary-the-theorem-excludes) |
+| 4 September | [Propagation lost when labels were scarce, and only won once they were not](#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not) |
+| 4 September | [The fresh clone caught a number my own machine had stopped producing](#4-september--the-fresh-clone-caught-a-number-my-own-machine-had-stopped-producing) |
+| 4 September | [The badge at the top of the README had been red for three days](#4-september--the-badge-at-the-top-of-the-readme-had-been-red-for-three-days) |
+| 4 September | [The fix for a false positive only ever worked by accident](#4-september--the-fix-for-a-false-positive-only-ever-worked-by-accident) |
+
+</details>
+
 ---
 
 ## 2 September — the first version of this project was the wrong project

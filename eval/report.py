@@ -2658,6 +2658,51 @@ def _md_table_html(text: str) -> str:
     return "".join(out)
 
 
+def _md_richblock_html(text: str) -> str:
+    """A README section that mixes `###` subheadings, bullet lists and prose -
+    the pipeline write-up - rendered in order rather than by picking one
+    construct out of it the way the narrower helpers above do."""
+    out: list[str] = []
+    buf: list[str] = []
+    mode = None  # None | "p" | "ul"
+
+    def flush():
+        nonlocal buf, mode
+        if not buf:
+            mode = None
+            return
+        if mode == "ul":
+            out.append("<ul>" + "".join(f"<li>{_md_inline(b)}</li>" for b in buf) + "</ul>")
+        else:
+            out.append(f"<p>{_md_inline(' '.join(buf))}</p>")
+        buf, mode = [], None
+
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or re.match(r"^-{3,}$", s):
+            flush()
+            continue
+        h = re.match(r"^#{3,6}\s+(.*)$", s)
+        if h:
+            flush()
+            out.append(f"<h3>{_md_inline(h.group(1))}</h3>")
+            continue
+        b = re.match(r"^[-*]\s+(.*)$", s)
+        if b:
+            if mode != "ul":
+                flush()
+                mode = "ul"
+            buf.append(b.group(1))
+            continue
+        if mode == "ul":
+            buf[-1] += " " + s
+        else:
+            mode = "p"
+            buf.append(s)
+    flush()
+    return "".join(out)
+
+
 def _md_paragraphs_html(text: str) -> str:
     """Plain prose paragraphs (blank-line separated), skipping any pipe-table
     or list lines mixed into the same block - those are rendered by the
@@ -2771,9 +2816,9 @@ github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
                   readme, re.S).group(1))) if "<!-- oneminute:start -->" in readme else ""
 
     problem_html = _fix_links_for_pages(
-        _md_paragraphs_html(_md_section(readme, "## The problem")))
+        _md_paragraphs_html(_md_section(readme, "## Overview")))
 
-    how_it_works_raw = _md_section(readme, "## How it works")
+    how_it_works_raw = _md_section(readme, "## System Architecture")
     how_it_works_raw = re.sub(r"```mermaid.*?```", "", how_it_works_raw, flags=re.S)
     how_intro, _, how_list = how_it_works_raw.partition("\n1. ")
     how_intro_html = _fix_links_for_pages(_md_paragraphs_html(how_intro))
@@ -2783,25 +2828,34 @@ github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
     table_md = re.search(r"<!-- results:start -->(.*?)<!-- results:end -->",
                          results_section, re.S)
     results_table_html = _md_table_html(table_md.group(1)) if table_md else ""
-    _, _, findings_raw = results_section.partition("thirteen findings, including the four "
-                                                    "that did not work:")
-    findings_html = _md_list_html(findings_raw, ordered=True)
+    # The findings live in their own table after the generated block, so the
+    # two tables in this section are split on the end marker rather than both
+    # being swept up by one pass over the section.
+    findings_raw = results_section.split("<!-- results:end -->")[-1]
+    findings_html = _fix_links_for_pages(_md_table_html(findings_raw))
 
-    caveats_html = _md_list_html(
-        _md_section(readme, "## What these numbers do not prove"), ordered=False)
-    caveats_html = _fix_links_for_pages(caveats_html)
+    caveats_html = _fix_links_for_pages(_md_table_html(
+        _md_section(readme, "## What These Numbers Do Not Prove")))
 
-    ml_html = _fix_links_for_pages(_md_paragraphs_html(
-        _md_section(readme, "## Where machine learning is used, and where it is not")))
+    ml_section = _md_section(
+        readme, "## Where Machine Learning Is Used, and Where It Is Not")
+    ml_html = (_md_table_html(ml_section)
+               + _fix_links_for_pages(_md_paragraphs_html(ml_section)))
 
     five_that_mattered = _fix_links_for_pages(
         _md_list_html(_md_section(failures, "### The five that mattered"), ordered=False),
         anchor_file="FAILURES.md") if failures else ""
 
     citations_html = _fix_links_for_pages(
-        _md_list_html(_md_section(readme, "## Related work and citations"), ordered=False))
+        _md_table_html(_md_section(readme, "## Research Foundation")))
 
-    repo_map_html = _md_table_html(_md_section(readme, "## Repository map"))
+    repo_map_html = _fix_links_for_pages(
+        _md_table_html(_md_section(readme, "## Project Structure")))
+
+    features_html = _md_table_html(_md_section(readme, "## Key Features"))
+    stack_html = _md_table_html(_md_section(readme, "## Tech Stack"))
+    pipeline_html = _fix_links_for_pages(_md_table_html(
+        _md_section(readme, "## Data & ML Pipeline")))
 
     # --- one real interactive chart: the same grid docs/results.md reads,
     # rendered client-side from embedded JSON, with a table fallback so it
@@ -2830,7 +2884,20 @@ github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
         f'<figcaption>{esc(FIGURE_CAPTIONS.get(f.stem, ("", None))[1] or "")}</figcaption>'
         f'</figure>' for f in fig_files)
 
-    n_findings = table_md and len(re.findall(r"^\d+\. ", findings_raw, re.M))
+    n_findings = len(re.findall(r"^\|\s*\d+\s*\|", findings_raw, re.M)) or None
+
+    TABS = [("overview", "Overview"), ("method", "How it works"),
+            ("results", "Results"), ("figures", "Figures"),
+            ("failures", "What broke"), ("research", "Research")]
+    tabs_html = "".join(
+        f'<button class="tab{" on" if i == 0 else ""}" role="tab" id="t-{k}" '
+        f'aria-controls="p-{k}" aria-selected="{"true" if i == 0 else "false"}" '
+        f'tabindex="{0 if i == 0 else -1}">{esc(label)}</button>'
+        for i, (k, label) in enumerate(TABS))
+
+    console_url = "https://orbweaver-adarshcod30s-projects.vercel.app"
+    repo_url = "https://github.com/adarshcod30/Orbweaver"
+    blob = f"{repo_url}/blob/main"
 
     dest.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2843,55 +2910,67 @@ rings in transaction graphs, and reporting what it costs to be wrong about
 them. {esc(cell.get('ring_precision'))} ring precision against a base rate of
 {esc(base)}.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/headline_precision_vs_cost.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/social-preview.png">
 <meta name="twitter:card" content="summary_large_image">
 <style>{CASE_CSS}
+[hidden]{{display:none!important}}
+.hero{{padding:8px 0 4px}}
 .flow{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0}}
-.fstep{{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;
-padding:9px 13px;font-size:13px;text-align:center;line-height:1.3}}
-.fstep small{{color:var(--muted);font-size:11px}}
+.fstep{{background:var(--bg);border:1px solid var(--line);border-radius:8px;
+padding:10px 14px;font-size:13.5px;text-align:center;line-height:1.35;
+box-shadow:var(--shadow-sm)}}
+.fstep small{{color:var(--muted);font-size:11.5px;display:block}}
 .fstep.accent{{background:var(--accent);color:#fff;border-color:var(--accent)}}
+.fstep.accent small{{color:#ffd9c7}}
 .farrow{{color:var(--muted);font-size:16px}}
-.toc{{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;margin:0 0 28px}}
-.toc a{{color:var(--muted)}}
-figure{{margin:0 0 22px;padding:0}}
+figure{{margin:0 0 24px;padding:0}}
 figure img{{width:100%;border:1px solid var(--line);border-radius:8px;
 background:var(--surface)}}
-figcaption{{color:var(--muted);font-size:12.5px;margin-top:6px}}
+figcaption{{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.5}}
 .figuregrid{{display:grid;grid-template-columns:1fr;gap:0}}
-@media (min-width:760px){{.figuregrid{{grid-template-columns:1fr 1fr;gap:0 24px}}}}
+@media (min-width:820px){{.figuregrid{{grid-template-columns:1fr 1fr;gap:0 26px}}}}
 #lambda-chart svg circle{{cursor:pointer}}
 #lambda-chart svg circle:focus-visible{{stroke:var(--ink);stroke-width:3px;outline:none}}
-h2{{scroll-margin-top:16px;border-top:1px solid var(--line);padding-top:32px;
-margin-top:36px}}
-h2:first-of-type{{border-top:none;padding-top:0;margin-top:0}}
+.card h3{{font-size:15px;margin:18px 0 6px;letter-spacing:-.01em}}
+.card ol,.card ul{{padding-left:22px}}
+.card li{{margin-bottom:8px}}
+.card ol li::marker{{color:var(--accent);font-weight:600}}
+.panel>.card:first-child{{margin-top:4px}}
 </style></head><body>
+<header class="masthead">
+<div class="masthead-in">
+<a class="brand" href="#overview"><span class="dot"></span>Orbweaver</a>
+<nav class="tabs" role="tablist" aria-label="Sections">{tabs_html}</nav>
+</div>
+</header>
 <div class="wrap">
-<h1>Orbweaver</h1>
-<p class="sub"><em>The one that feels the whole web.</em> Finding coordinated
-promotion-abuse rings in transaction graphs — and reporting what it costs to
-be wrong about them. Built for the Razorpay AI Buildathon, Track 02 — this is
-my submission to their buildathon, not a Razorpay product.</p>
+
+<section class="hero">
+<h1>Finding coordinated abuse rings</h1>
+<p class="lede"><em>The one that feels the whole web.</em> Promotion-abuse
+rings are invisible order by order — the fraud lives in the connections
+between accounts. Orbweaver finds them in the graph, and reports what it
+costs to be wrong about them.</p>
 <div class="bar">{bars}</div>
+<div class="btn-row">
+<a class="btn primary" href="{console_url}">Open the live console →</a>
+<a class="btn" href="case-files.html">Browse the case files</a>
+<a class="btn" href="{blob}/docs/results.md">Full results</a>
+<a class="btn ghost" href="{repo_url}">GitHub</a>
+</div>
 <div class="assume">Every number on this page is produced by
 <code>make reproduce</code>; none is typed in by hand — this page is quoted,
-not retyped, from <a href="https://github.com/adarshcod30/Orbweaver/blob/main/README.md">README.md</a>.
-Rupee figures use stated assumptions, because the dataset ships no monetary
-amounts, so they rank options against each other and mean nothing absolute.</div>
+not retyped, from <a href="{blob}/README.md">README.md</a>. Rupee figures use
+stated assumptions, because the dataset ships no monetary amounts, so they
+rank options against each other and mean nothing absolute. Built for the
+Razorpay AI Buildathon, Track 02 — my submission to their buildathon, not a
+Razorpay product.</div>
+</section>
 
-<p class="toc"><a href="#the-problem">the problem</a> ·
-<a href="#why-this-dataset">why this dataset</a> ·
-<a href="#how-it-works">how it works</a> ·
-<a href="#results">results</a> ·
-<a href="#what-these-numbers-do-not-prove">what these numbers do not prove</a> ·
-<a href="#what-broke">what broke</a> ·
-<a href="#figures">figures</a> ·
-<a href="#research-foundation">research foundation</a> ·
-<a href="#try-it">try it</a></p>
-
-<div class="card"><h2 id="the-problem">The problem</h2>{problem_html}</div>
-
-<div class="card"><h2 id="why-this-dataset">Why this dataset</h2>
+<section class="panel" id="p-overview" role="tabpanel" aria-labelledby="t-overview">
+<div class="card"><h2>In one minute</h2>{one_minute}</div>
+<div class="card"><h2>The problem</h2>{problem_html}</div>
+<div class="card"><h2>Why this dataset</h2>
 <p>PPA is the only public, labelled promotion-abuse-ring dataset I could find
 — not the best one, the only one — and I never modified it, because a
 detector's numbers are only honest if the ground truth they are checked
@@ -2899,103 +2978,160 @@ against is real. The full case for why this is still the right dataset to
 have started from, what its own paper claims that the release does not
 support, and how the hostel test and three unrelated datasets test the
 method past PPA, is in
-<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/why-this-data.md">docs/why-this-data.md</a>.</p>
-</div>
+<a href="{blob}/docs/why-this-data.md">docs/why-this-data.md</a>.</p></div>
+{f'<div class="card"><h2>Key features</h2><div class="table-scroll">{features_html}</div></div>' if features_html else ''}
+{f'<div class="card"><h2>Tech stack</h2><div class="table-scroll">{stack_html}</div></div>' if stack_html else ''}
+</section>
 
-<div class="card"><h2 id="how-it-works">How it works</h2>
+<section class="panel" id="p-method" role="tabpanel" aria-labelledby="t-method" hidden>
+<div class="card"><h2>How it works</h2>
 {how_intro_html}
 <div class="flow" role="img" aria-label="orders flow into a multi-relation
 graph, into account scoring, into pruning, into peeling, into ring plus
 evidence, into a review policy. Nights one through four replay this whole
 loop, anchored so a case survives the night.">
 <div class="fstep">orders</div><div class="farrow">→</div>
-<div class="fstep">graph<br><small>rarity × relation weight</small></div><div class="farrow">→</div>
-<div class="fstep">scorer<br><small>the one learned step</small></div><div class="farrow">→</div>
-<div class="fstep">prune<br><small>score cut-off τ</small></div><div class="farrow">→</div>
-<div class="fstep">peel<br><small>densest-subgraph, proved bound</small></div><div class="farrow">→</div>
+<div class="fstep">graph<small>rarity × relation weight</small></div><div class="farrow">→</div>
+<div class="fstep">scorer<small>the one learned step</small></div><div class="farrow">→</div>
+<div class="fstep">prune<small>score cut-off τ</small></div><div class="farrow">→</div>
+<div class="fstep">peel<small>densest-subgraph, proved bound</small></div><div class="farrow">→</div>
 <div class="fstep">ring + evidence</div><div class="farrow">→</div>
-<div class="fstep accent">policy</div>
+<div class="fstep accent">policy<small>review / hold / ignore</small></div>
 </div>
-<p class="note">Replayed one night at a time for the nightly numbers below:
-rings are anchored around fixed accounts so a case found tonight is
-recognisably the same case tomorrow, not a fresh one every morning.</p>
+<p class="note">Replayed one night at a time for the nightly numbers: rings
+are anchored around fixed accounts so a case found tonight is recognisably
+the same case tomorrow, not a fresh one every morning.</p>
 {how_list_html}
 </div>
-
-<div class="card"><h2 id="results">Results</h2>
-<p>All {esc(n_findings) or 'thirteen'} investigations this project ran,
-including the four that came back negative, generated by
-<code>make reproduce</code> from the run in <code>data/processed/</code>:</p>
-{results_table_html}
-{findings_html}
+{f'<div class="card"><h2>Data and ML pipeline</h2><div class="table-scroll">{pipeline_html}</div></div>' if pipeline_html else ''}
+<div class="card"><h2>Where a model is trusted, and where it is not</h2>
+<div class="table-scroll">{ml_html}</div>
+<div class="btn-row"><a class="btn" href="{blob}/docs/design-decisions.md">Read the design decisions →</a>
+<a class="btn ghost" href="{blob}/docs/architecture.md">Architecture in depth</a></div>
 </div>
+</section>
 
-<div class="card"><h2 id="lambda-chart-h">How much the model's opinion matters, interactively</h2>
+<section class="panel" id="p-results" role="tabpanel" aria-labelledby="t-results" hidden>
+<div class="card"><h2>Every number this project produces</h2>
+<p class="sub">All {esc(n_findings) or 'thirteen'} investigations, including
+the four that came back negative, generated by <code>make reproduce</code>
+from the run in <code>data/processed/</code>.</p>
+<div class="table-scroll">{results_table_html}</div>
+</div>
+<div class="card"><h2>The findings, including the ones that did not work</h2>
+<div class="table-scroll">{findings_html}</div></div>
+<div class="card"><h2>How much the model's opinion actually matters</h2>
 <p class="sub">At the score cut-off this project uses (τ = {esc(tau)}), this is
 ring precision as λ moves the peeling objective from pure structure
 (λ = 0) toward weighing the account scorer's opinion more heavily. The same
-numbers are in the row above and, alongside every tau, in
-<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md#figures">docs/results.md</a>.</p>
+numbers are in the table above and, alongside every tau, in
+<a href="{blob}/docs/results.md#figures">docs/results.md</a>.</p>
 <div id="lambda-chart" aria-label="Ring precision against lambda, a line chart">
 <noscript>JavaScript is off — see the table below.</noscript>
 </div>
 <script id="chart-data" type="application/json">{chart_json}</script>
-<details class="chart-table"><summary>View as a table</summary>{chart_table}</details>
+<details class="chart-table"><summary>View as a table</summary>
+<div class="table-scroll">{chart_table}</div></details>
 </div>
+<div class="card"><h2>What these numbers do not prove</h2>
+<div class="table-scroll">{caveats_html}</div></div>
+</section>
 
-<div class="card"><h2 id="what-these-numbers-do-not-prove">What these numbers do not prove</h2>
-{caveats_html}
-</div>
-
-<div class="card"><h2 id="where-machine-learning-is-used">Where machine learning is used, and where it is not</h2>
-{ml_html}
-</div>
-
-<div class="card"><h2 id="what-broke">What broke</h2>
-<p class="sub">The five that mattered, out of
-<a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md">FAILURES.md</a>'s
-full, dated log:</p>
-{five_that_mattered}
-</div>
-
-<div class="card"><h2 id="figures">Figures</h2>
+<section class="panel" id="p-figures" role="tabpanel" aria-labelledby="t-figures" hidden>
+<div class="card"><h2>Figures</h2>
 <p class="sub">All {esc(len(fig_files))} of them, regenerated by
 <code>make report</code>; the exact captions in
-<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md">docs/results.md</a>.</p>
+<a href="{blob}/docs/results.md">docs/results.md</a>.</p>
 <div class="figuregrid">{figures_html}</div>
 </div>
+</section>
 
-<div class="card"><h2 id="research-foundation">Research foundation</h2>
-{citations_html}
+<section class="panel" id="p-failures" role="tabpanel" aria-labelledby="t-failures" hidden>
+<div class="card"><h2>What broke</h2>
+<p class="sub">The five that mattered, out of
+<a href="{blob}/FAILURES.md">FAILURES.md</a>'s full, dated log — the file I
+would read first if someone handed me this repository.</p>
+{five_that_mattered}
+<div class="btn-row"><a class="btn" href="{blob}/FAILURES.md">Read the whole log →</a></div>
 </div>
+</section>
 
-<div class="card"><h2 id="repository-map">Repository map</h2>
-{repo_map_html}
-</div>
-
-<div class="card"><h2 id="try-it">Try it</h2>
-<ul>
-<li><a href="https://orbweaver-adarshcod30s-projects.vercel.app">Live console</a>
- — the review queue, one card per ring, a nightly replay view and an
- account lookup, running from the demo bundle.</li>
-<li><a href="case-files.html">case-files.html</a> — the same review queue as
- a standalone page, no server needed.</li>
-<li><a href="https://github.com/adarshcod30/Orbweaver">Source</a>, and
- running it locally:
+<section class="panel" id="p-research" role="tabpanel" aria-labelledby="t-research" hidden>
+<div class="card"><h2>Research foundation</h2>
+<div class="table-scroll">{citations_html}</div></div>
+<div class="card"><h2>Repository map</h2>
+<div class="table-scroll">{repo_map_html}</div></div>
+<div class="card"><h2>Run it yourself</h2>
+<p>A clone, six packages and one command — no dataset download needed, because
+the repository carries the computed results as a bundle.</p>
 <pre><code>git clone https://github.com/adarshcod30/Orbweaver
 cd Orbweaver
 pip install -r requirements-demo.txt
-make console      # http://127.0.0.1:8000, no dataset needed</code></pre></li>
-</ul>
-{f'<p class="note">The repository carries a {mb} demo bundle, so the live console and a fresh clone both run with no dataset present at all.</p>' if mb else ''}
+make console      # http://127.0.0.1:8000</code></pre>
+{f'<p class="note">The bundle is {mb}, so the live console and a fresh clone both run with no dataset present at all. The full pipeline from raw data is <code>make reproduce</code>.</p>' if mb else ''}
+<div class="btn-row">
+<a class="btn primary" href="{console_url}">Open the live console →</a>
+<a class="btn" href="case-files.html">Case files (static page)</a>
+<a class="btn ghost" href="{repo_url}">Source on GitHub</a>
 </div>
+</div>
+</section>
 
-<p class="sub">MIT-licensed. Detection only —
-<a href="https://github.com/adarshcod30/Orbweaver/blob/main/ETHICS.md">ETHICS.md</a>
-sets the boundary in six lines. Built for the Razorpay AI Buildathon, Track 02 ·
-<a href="https://github.com/adarshcod30/Orbweaver">source</a></p>
+<p class="footer">MIT-licensed. Detection only —
+<a href="{blob}/ETHICS.md">ETHICS.md</a> sets the boundary in six lines.
+Built for the Razorpay AI Buildathon, Track 02 ·
+<a href="{repo_url}">github.com/adarshcod30/Orbweaver</a></p>
 </div>
 <script>
+(function(){{
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab[role="tab"]'));
+  if (!tabs.length) return;
+  var panels = tabs.map(function(t){{
+    return document.getElementById(t.getAttribute('aria-controls'));
+  }});
+  function select(i, scroll){{
+    tabs.forEach(function(t, j){{
+      var on = j === i;
+      t.classList.toggle('on', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      if (panels[j]) panels[j].hidden = !on;
+    }});
+    try {{ history.replaceState(null, '', '#' + tabs[i].id.slice(2)); }} catch (e) {{}}
+    if (scroll) window.scrollTo({{top: 0, behavior: 'smooth'}});
+  }}
+  tabs.forEach(function(t, i){{
+    t.addEventListener('click', function(){{ select(i, true); }});
+    t.addEventListener('keydown', function(e){{
+      var d = e.key === 'ArrowRight' ? 1 : (e.key === 'ArrowLeft' ? -1 : 0);
+      if (!d) return;
+      e.preventDefault();
+      var n = (i + d + tabs.length) % tabs.length;
+      tabs[n].focus();
+      select(n, false);
+    }});
+  }});
+  function fromHash(){{
+    var h = (location.hash || '').replace('#', '');
+    if (!h) return false;
+    for (var i = 0; i < tabs.length; i++) {{
+      if (tabs[i].id.slice(2) === h) {{ select(i, false); return true; }}
+    }}
+    var el = document.getElementById(h);
+    if (el) {{
+      for (var j = 0; j < panels.length; j++) {{
+        if (panels[j] && panels[j].contains(el)) {{
+          select(j, false);
+          el.scrollIntoView();
+          return true;
+        }}
+      }}
+    }}
+    return false;
+  }}
+  if (!fromHash()) select(0, false);
+  window.addEventListener('hashchange', fromHash);
+}})();
 (function(){{
   var dataEl = document.getElementById('chart-data');
   var host = document.getElementById('lambda-chart');

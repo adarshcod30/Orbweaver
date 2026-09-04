@@ -1,125 +1,80 @@
 # Threat model
 
-## In one minute
+**[← README](../README.md)** · [Architecture](architecture.md) · [Design decisions](design-decisions.md) · [Results](results.md)
 
-Orbweaver looks for one operator behind many accounts, and it covers four
-abuse types directly, because PPA's own labels cover them: new-user offer
-farming, referral rings, cashback farming, and stocking-up/reseller rings.
+Orbweaver looks for **one operator behind many accounts**. Every order is
+individually legitimate; the abuse exists only in the relationships.
 
 The obvious way a system like this goes wrong is flagging people who simply
-live together — a hostel floor, a paying-guest place, a joint family. I
-tested that directly: of 2,446 co-located groups found in the data (people
-sharing a delivery location, overwhelmingly labelled normal), only 2 of them
-— 0.08% — have any member placed in a ring.
+live together. Tested directly: of **2,446** co-located groups (sharing a
+delivery location, labelled overwhelmingly normal), only **2 — 0.08%** have any
+member placed in a ring.
 
-Of the ways an adversary can evade this, one still works at low cost:
-fragmenting the ring into small cells. The other three cost the attacker
-more and still leave a trace. See
-[How an adversary would evade it](#how-an-adversary-would-evade-it) for the
-full argument; the cost ladder is below.
+## What it catches
+
+| Abuse | Covered? |
+|---|---|
+| **New-user offer farming** — many accounts, one operator, first-order discounts | ✅ directly — this is what PPA labels |
+| **Referral rings** — A "refers" B, C, D…, all controlled by A | ✅ same graph signature |
+| **Cashback farming** — orders timed and shaped to milk cashback rules | ✅ labelled in PPA |
+| **Stocking up / reseller rings** — discounted stock bought across accounts to resell | ✅ labelled in PPA |
+| Seller-side collusion — a merchant placing fake orders from controlled accounts | ⚪ same algorithm, different labels — **not evaluated, so not claimed** |
+| Delivery-partner collusion — riders and fake customers farming incentives | ⚪ same algorithm, not evaluated |
+| Refund rings — coordinated "item not received" claims | ⚪ same algorithm, not evaluated |
+| Money-mule networks — proceeds hopping between accounts | ⚪ same algorithm, not evaluated |
+
+## What it does not catch
+
+| Out of scope | Why |
+|---|---|
+| **A lone fraudster** | No graph signature, nothing to peel. A per-transaction scorer is the right tool — Orbweaver sits *downstream* of one, not in place of it |
+| **Account takeover** | The account is a real customer with real history; the fraud is in the session, not the relationships |
+| **Stolen cards, as a per-card problem** | Different mechanism: one card used by one person who shouldn't have it. What *does* transfer is when shared entities link the accounts using those cards — run unchanged on IEEE-CIS (device, e-mail domains, billing address, browser), the same extractor reaches **0.5079** ring precision at **18.14×** base rate. The boundary is the mechanism, not the payment domain |
+| **Abuse with no shared entity at all** | A different address, device, promotion and coupon per account, never overlapping, leaves no edge to find. This is the honest boundary — and the one the adversarial evaluation probes |
+
+## The adversary's cost ladder
 
 ```mermaid
-flowchart TD
-    A["1. Fragment the ring<br/>split into cells sharing nothing across them<br/><br/>Cost to attacker: low —<br/>behavioural edges recover +0.0237 precision<br/>at cells of three, but recover nothing<br/>at cells of twenty, so this is the attack that works"]
-    B["2. Dilute with camouflage<br/>add edges to ordinary accounts through common entities<br/><br/>Cost to attacker: low, but ineffective —<br/>rarity weighting makes a common entity worth<br/>almost nothing, so density barely moves;<br/>working camouflage needs rare, genuinely<br/>distinct addresses and instruments"]
-    C["3. Slow down<br/>spread the same behaviour over a longer window<br/><br/>Cost to attacker: real —<br/>directly reduces the attacker's<br/>return per unit time"]
-    D["4. Use genuinely separate identities<br/>different address, device, instrument, promotion<br/>per account, never overlapping<br/><br/>Cost to attacker: highest —<br/>defeats the method completely, but removes<br/>most of the economic advantage of running a ring"]
-    A --> B --> C --> D
+flowchart LR
+    A["① Fragment<br/>the ring"] --> B["② Dilute with<br/>camouflage"] --> C["③ Slow<br/>down"] --> D["④ Genuinely separate<br/>identities"]
+    A -.-> A1["cost: LOW<br/><b>this one works</b>"]
+    B -.-> B1["cost: low<br/>but ineffective"]
+    C -.-> C1["cost: real"]
+    D -.-> D1["cost: highest<br/>defeats the method"]
+    style A fill:#fef2f2,stroke:#b91c1c
+    style D fill:#f0fdf4,stroke:#166534
 ```
 
-## What Orbweaver is built to catch
+| # | Evasion | Cost | What happens |
+|---|---|---|---|
+| 1 | **Fragment the ring** — split fifty accounts into ten cells of five sharing nothing across cells | **Low** | ⚠️ **The attack that works.** Density falls below detectability. Behavioural edges (accounts that behave alike still do so after every shared entity is cut) recover **+0.0237** precision at cells of three — but **nothing** at cells of twenty, and they don't restore the curve |
+| 2 | **Dilute with camouflage** — add edges to ordinary accounts through common entities | Low | Ineffective. Rarity weighting makes an entity shared by 3M accounts worth almost nothing, so density barely moves. Camouflage through *rare* entities would work — but that means acquiring genuinely distinct addresses and instruments, which is exactly the cost we want to impose |
+| 3 | **Slow down** — spread the same behaviour over a longer window | Real | Effective, and it directly reduces the attacker's return per unit time |
+| 4 | **Genuinely separate identities** — different address, device, instrument, promotion per account | Highest | Defeats the method completely. It also removes most of the economic advantage of running a ring, which is the point: make the *cheap* version uneconomic, not make fraud impossible |
 
-One party controlling many accounts to extract value that was meant for many
-different people. Every order is individually legitimate; the abuse exists
-only in the relationships between accounts.
-
-| Abuse | What it looks like | Covered? |
-|---|---|---|
-| New-user offer farming | Many accounts, one operator, first-order discounts | **Yes** — directly, this is what PPA labels |
-| Referral rings | A "refers" B, C, D…, all controlled by A | **Yes** — same graph signature |
-| Cashback farming | Orders timed and shaped to milk cashback rules | **Yes** — labelled in PPA |
-| Stocking up / reseller rings | Discounted stock bought across many accounts to resell | **Yes** — labelled in PPA |
-| Seller-side collusion | A merchant places fake orders from controlled accounts | Same algorithm, different labels — not evaluated here |
-| Delivery-partner collusion | Riders and fake customers farming incentives | Same algorithm, different labels — not evaluated here |
-| Refund rings | Coordinated "item not received" claims | Same algorithm, different labels — not evaluated here |
-| Money-mule networks | Proceeds hopping between accounts | Same algorithm, different labels — not evaluated here |
-
-The last four share the structural signature and would need only different
-labels and relations. I have not evaluated them, so I do not claim them.
-
-## What it is not built to catch
-
-- **A single fraudster acting alone.** No graph signature, nothing to peel.
-  A per-transaction scorer is the right tool and Orbweaver sits downstream of
-  one, not in place of it.
-- **Account takeover.** The account belongs to a real customer with a real
-  history; the fraud is in the session, not the relationships.
-- **Payment-instrument fraud** such as stolen cards, *as a per-card problem*.
-  The mechanism is different: one card used by one person who should not have
-  it, rather than many accounts farming one offer. What does transfer is the
-  case where shared entities link the accounts using those cards, and that is
-  measurable rather than hypothetical — run unchanged on IEEE-CIS, where the
-  relations are the device, e-mail domains, billing address and browser, the
-  same extractor reaches 0.5079 ring precision at 18.14× that dataset's base
-  rate. `docs/results.md` reports it with the caveats it needs, including that
-  the account there is a card fingerprint rather than a person. So the boundary
-  is the mechanism, not the payment domain.
-- **Abuse with no shared entity at all.** If an operator uses a different
-  address, device, promotion and coupon for every account and never overlaps,
-  there is no edge to find. That is the honest boundary of the method, and it
-  is the same boundary the adversarial evaluation probes.
-
-## How an adversary would evade it
-
-In roughly increasing order of cost to the attacker:
-
-1. **Fragment the ring.** Split fifty accounts into ten cells of five that
-   share nothing across cells. Density falls; below some cell size the group
-   stops being distinguishable. Measuring where that threshold sits is the
-   point of the fragmentation evaluation — the useful output is not "we catch
-   everything" but "here is the cell size below which we do not." There is a
-   partial answer to this one: accounts that behave alike still behave alike
-   after every shared entity between them has been cut, and behavioural edges
-   recover +0.0237 precision at cells of three. They recover nothing at cells
-   of twenty, and they do not restore the curve, so fragmentation remains the
-   attack that works.
-2. **Dilute with camouflage.** Add edges to ordinary accounts through common
-   entities so the group looks less cohesive. Rarity weighting is the direct
-   answer: a shared entity that 3 million accounts have is worth almost
-   nothing in the objective, so camouflage through common entities barely
-   moves density. Camouflage through *rare* entities would work, but that
-   means acquiring genuinely distinct addresses and instruments, which is the
-   cost we want to impose.
-3. **Slow down.** Spread the same behaviour over a longer window so less of it
-   falls inside any one detection period. Effective, and it directly reduces
-   the attacker's return per unit time.
-4. **Use genuinely separate identities** — different address, device,
-   instrument, promotion per account, never overlapping. This defeats the
-   method completely. It also removes most of the economic advantage of
-   running a ring, which is the point: the goal is to make the cheap version
-   uneconomic, not to make fraud impossible.
+The useful output of the fragmentation evaluation is not "we catch everything"
+— it is **"here is the cell size below which we do not."**
 
 ## Costs of being wrong
 
 **A false positive is a group, not a person.** Acting on a wrong ring of forty
-accounts means forty real customers at once. This is why every detection
-number in this project is reported next to its false-positive count and cost,
-and why the output is a case file for review rather than an automated action.
+accounts means forty real customers at once. That is why every detection number
+here is reported next to its false-positive count and cost, and why the output
+is a **case file for review** rather than an automated action.
 
-**The most likely false positive is a shared address.** In India that is
-routinely a hostel, a paying-guest place, an office or a joint family. The
-evaluation includes a test built specifically on that population — co-located
-groups whose labelled members are overwhelmingly normal — and reports both how
-many the pipeline touches and what distinguishes those it touches from those
-it leaves alone.
+**Most likely false positive: a shared address.** In India that is routinely a
+hostel, a PG, an office or a joint family. The hostel test is built
+specifically on that population and reports both how many the pipeline touches
+and what separates those it touches from those it leaves alone — the separator
+turns out to be the *account score*, not the structure.
 
-**The most likely false negative is a small, careful ring.** Below the size
-floor, or spread across enough distinct entities, a group leaves no dense
-structure. Lowering the floor to catch it raises the false-positive rate on
-ordinary small groups such as families. That trade-off is a business decision
-about review capacity and customer harm, not a modelling one, which is why the
-operating point is reported as a curve rather than chosen here.
+**Most likely false negative: a small, careful ring.** Below the size floor, or
+spread across enough distinct entities, a group leaves no dense structure.
+Lowering the floor to catch it raises false positives on ordinary small groups
+like families. That trade-off is a business decision about review capacity and
+customer harm, not a modelling one — which is why the operating point is
+reported as a **curve** rather than chosen here.
 
 ---
 
-Back to [README](../README.md).
+**[← README](../README.md)** · Next: [the honest failure log →](../FAILURES.md)
