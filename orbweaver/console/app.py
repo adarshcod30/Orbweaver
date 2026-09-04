@@ -118,11 +118,11 @@ EXTRA_CSS = """
 .controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:20px}
 .controls label{display:block;font-size:11px;text-transform:uppercase;
 letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
-.controls input,.controls select{font:14px inherit;padding:7px 10px;
-border:1px solid var(--line);border-radius:7px;background:var(--surface);
+.controls input,.controls select{font:14px inherit;padding:8px 12px;
+border:1px solid var(--line);border-radius:8px;background:var(--surface);
 color:var(--ink)}
-.row{background:var(--surface);border:1px solid var(--line);border-radius:10px;
-padding:14px 18px;margin-bottom:10px;cursor:pointer;box-shadow:var(--shadow)}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+padding:16px 20px;margin-bottom:12px;cursor:pointer;box-shadow:var(--shadow)}
 .row:hover{border-color:var(--accent)}
 .row:focus-visible{outline:none;box-shadow:var(--focus)}
 .row .top{display:flex;justify-content:space-between;gap:16px;align-items:baseline}

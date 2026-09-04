@@ -8,41 +8,44 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary">
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 :root{--ink:#1c1c1c;--muted:#6b6b6b;--line:#e6e6e6;--accent:#c2410c;
 --accent2:#0369a1;--bg:#fbfaf9;--surface:#ffffff;--ok:#166534;--ok-bg:#f0fdf4;
 --warn:#a16207;--danger:#b91c1c;--danger-bg:#fef2f2;--code-bg:#f5f5f4;
 --assume-bg:#fffbeb;--assume-line:#fde68a;--assume-ink:#78350f;
---shadow:0 1px 2px rgba(20,15,10,.04),0 6px 16px rgba(20,15,10,.05);
---focus:0 0 0 3px rgba(194,65,12,.35);--radius:10px}
+--shadow:0 2px 4px rgba(31,35,38,.06),0 8px 20px -4px rgba(31,35,38,.08);
+--focus:0 0 0 3px rgba(194,65,12,.35);--radius:12px;
+--ease:cubic-bezier(.3,0,.2,1)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
 --ink:#f0eeea;--muted:#a3a09a;--line:#312f2b;--accent:#e2691f;--accent2:#38a3d1;
 --bg:#121110;--surface:#1a1917;--ok:#4ade80;--ok-bg:#14261c;
 --warn:#f2b53d;--danger:#f87171;--danger-bg:#2a1616;--code-bg:#211f1c;
 --assume-bg:#241d10;--assume-line:#4d3c14;--assume-ink:#e7c471;
---shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.35);
+--shadow:0 2px 4px rgba(0,0,0,.32),0 8px 20px -4px rgba(0,0,0,.4);
 --focus:0 0 0 3px rgba(226,105,31,.4)}}
 :root[data-theme="dark"]{
 --ink:#f0eeea;--muted:#a3a09a;--line:#312f2b;--accent:#e2691f;--accent2:#38a3d1;
 --bg:#121110;--surface:#1a1917;--ok:#4ade80;--ok-bg:#14261c;
 --warn:#f2b53d;--danger:#f87171;--danger-bg:#2a1616;--code-bg:#211f1c;
 --assume-bg:#241d10;--assume-line:#4d3c14;--assume-ink:#e7c471;
---shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.35);
+--shadow:0 2px 4px rgba(0,0,0,.32),0 8px 20px -4px rgba(0,0,0,.4);
 --focus:0 0 0 3px rgba(226,105,31,.4)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
-font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+font:16px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+font-feature-settings:"cv11","ss01"}
 .wrap{max-width:1080px;margin:0 auto;padding:40px 24px 80px}
-h1{font-size:26px;margin:0 0 6px;letter-spacing:-.02em}
+h1{font-size:32px;margin:0 0 8px;letter-spacing:-.02em}
 h2{letter-spacing:-.01em}
-.sub{color:var(--muted);margin:0 0 28px}
-.bar{display:flex;flex-wrap:wrap;gap:28px;padding:18px 20px;background:var(--surface);
-border:1px solid var(--line);border-radius:var(--radius);margin-bottom:28px;
+.sub{color:var(--muted);margin:0 0 24px}
+.bar{display:flex;flex-wrap:wrap;gap:24px;padding:16px 20px;background:var(--surface);
+border:1px solid var(--line);border-radius:var(--radius);margin-bottom:24px;
 box-shadow:var(--shadow)}
 .stat b{display:block;font-size:20px;letter-spacing:-.01em}
 .stat span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-padding:20px 22px;margin-bottom:16px;box-shadow:var(--shadow)}
-.card h2{font-size:17px;margin:0 0 2px;letter-spacing:-.01em}
+padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card h2{font-size:18px;margin:0 0 2px;letter-spacing:-.01em}
 .card .meta{color:var(--muted);font-size:13px;margin-bottom:14px}
 table{border-collapse:collapse;width:100%;font-size:13.5px}
 th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;
@@ -79,19 +82,20 @@ details>summary{cursor:pointer;color:var(--accent2);font-size:13px}
 border:1px dashed var(--line);border-radius:var(--radius)}
 .empty-state b{display:block;color:var(--ink);font-size:16px;margin-bottom:6px}
 @media (prefers-reduced-motion:no-preference){
-.card,.row{transition:border-color .15s ease,box-shadow .15s ease}
+.card,.row{transition:border-color 200ms var(--ease),box-shadow 200ms var(--ease)}
 .htmx-settling{opacity:.001}
-*{transition-property:border-color,box-shadow,opacity;transition-duration:.15s}}
+*{transition-property:border-color,box-shadow,opacity;transition-duration:200ms;
+transition-timing-function:var(--ease)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;
 transition:none!important}}
-@media (max-width:640px){
+@media (max-width:768px){
 .wrap{padding:24px 16px 56px}
-h1{font-size:22px}
+h1{font-size:24px}
 .bar{gap:16px;padding:14px 16px}
-.stat b{font-size:17px}
-.card{padding:16px 18px}
+.stat b{font-size:18px}
+.card{padding:16px 20px}
 table{font-size:12.5px}
-.act{gap:10px}}
+.act{gap:12px}}
 </style></head><body>
 <div class="wrap">
 <h1>Ring case files</h1>
