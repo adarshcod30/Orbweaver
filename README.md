@@ -9,10 +9,10 @@ what it costs to be wrong about them.
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **If you have ten minutes:** [the problem](#the-problem) ·
-[the full results](docs/results.md), nine investigations of which three came
-back negative · [what broke](FAILURES.md), which is the file I would read
-first · and `docs/case-files.html`, the page an analyst is actually handed —
-open it in a browser, or run the console below.
+[the full results](docs/results.md), thirteen investigations of which four
+came back negative · [what broke](FAILURES.md), which is the file I would
+read first · and `docs/case-files.html`, the page an analyst is actually
+handed — open it in a browser, or run the console below.
 
 **Live:** [the review console](https://orbweaver-adarshcod30s-projects.vercel.app)
 runs the demo bundle on Vercel; [the static evidence](https://adarshcod30.github.io/Orbweaver/)
@@ -103,7 +103,7 @@ every time.
 
 <!-- results:end -->
 
-The nine findings, including the three that did not work:
+The thirteen findings, including the four that did not work:
 
 1. **Dense is not the same as fraudulent.** On the raw graph the densest
    subgraphs are large ordinary communities — people who happened to use the
@@ -159,6 +159,44 @@ The nine findings, including the three that did not work:
    already stops it. What analyst time buys is a 39% fall in legitimate value
    harmed. On these assumptions the reviewer is a false-positive control rather
    than a detector, which is not what I expected.
+10. **Telling a crowd from a ring by when it formed did not pay off, and the
+    fair test explains why.** Weighting edges by entity-arrival burstiness
+    costs 0.0149 ring precision on PPA, with no clean per-relation story — one
+    relation's least-bursty quartile carries the highest fraud lift, another's
+    the opposite. IEEE-CIS was built to test this properly, with
+    second-resolution timestamps PPA cannot offer, and it returned as clean a
+    null as this project has produced: the same 4 of 7 apartment clusters
+    touched at every resolution from one hour to one day. The billing address
+    is not informative *despite* being shared by a legitimate building — it is
+    informative *because of it* — and no reweighting of the same edges changes
+    which edges those are.
+11. **Which offers are being farmed splits into a precision ranking and a
+    coverage ranking, and they are not the same offers.** A leakage score
+    built from no label — ring share and mean member score — beats the base
+    rate by 2.5–3.8× at top 25 and 50. But leakage ranks small, concentrated
+    offers first, which caps how much fraud they can ever touch: fifty offers
+    by leakage cover 0.04% of all labelled fraud, against 7.1% — 19.7× the
+    ring's own recall ceiling — ranked by raw size instead, at the cost of
+    reviewing 325,494 accounts rather than a few hundred. Which ranking to use
+    is a review-capacity decision, not a technical one.
+12. **A team with almost no confirmed fraud labels is not starting from
+    nothing.** Prune-then-peel already beats the base rate at the smallest
+    fraction tested — 1,146 confirmed accounts, 0.5% of the training pool.
+    Held-out AUPRC keeps climbing meaningfully all the way to 100% of the
+    pool; no plateau appears within the range tested, so more labels would
+    plausibly still help past where this sweep stops.
+13. **A method with no fitted model at all beat both learned scorers, and the
+    reason it does is not the reason I expected.** Fast Belief Propagation —
+    one sparse linear system, a proven convergence condition, priors from
+    confirmed labels only — reaches 0.4615 held-out AUPRC at full label
+    availability against XGBoost's 0.3796 and GraphSAGE's 0.3819, and pruning
+    on its beliefs alone lifts ring precision to 0.9886 with three times the
+    recall at the same review cost. The hypothesis going in was that
+    propagation wins when labels are scarce; the data says the opposite — it
+    trails both learned scorers from 0.5% through 20% of the training pool and
+    only crosses over at 50%. Propagation needs seeds to spread from, and
+    needs enough of them before it out-reaches a feature model that has no
+    such blind spot.
 
 ## What these numbers do not prove
 

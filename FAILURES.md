@@ -8,7 +8,7 @@ Six of these are worth reading before the rest:
 - [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
 - [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
 - [4 September — I called a single noisy step "diminishing returns"](#4-september--i-called-a-single-noisy-step-diminishing-returns) — a knee-finder that mistook sampling variance at the smallest fraction for the shape of the whole curve
-- [4 September — the null model I built to remove a size bias had one of its own](#4-september--the-null-model-i-built-to-remove-a-size-bias-had-one-of-its-own) — a bug that would not have announced itself in a spot check
+- [4 September — the fresh clone caught a number my own machine had stopped producing](#4-september--the-fresh-clone-caught-a-number-my-own-machine-had-stopped-producing) — a rewrite verified by its tests, published by a file the rewrite never touched
 - [4 September — time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) — the fair test, built for exactly this weakness, came back a clean null
 - [4 September — propagation lost when labels were scarce, and only won once they were not](#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not) — the hypothesis ran backwards, and the mechanism that explains why is not the one I wrote down beforehand
 ---
@@ -1537,3 +1537,54 @@ the high end rather than merely catching up to them. The hypothesis I wrote
 down was about which method needs less data to *fit*; the mechanism that
 actually decided this was about which method needs less data to *reach*,
 and I had not separated those two questions before running the sweep.
+
+---
+
+## 4 September — the fresh clone caught a number my own machine had stopped producing
+
+**What broke:** two figures in the hostel test's "what separates them" table —
+the mean relation diversity and mean internal edge count of the 2,444
+co-located groups the pipeline correctly left alone. The fresh-clone
+verification for the close came back with `docs/results.md` differing from
+my working copy in exactly these two numbers - 1.8318 against 1.7602, 172.81
+against 147.65 - while every other number, including the flagged group's own
+stats and the "2 of 2,446" headline, matched exactly.
+
+**What I believed:** that a diff here meant non-determinism in the vectorised
+diversity computation I wrote for the lockstep item - a race in the sparse
+reduceat pass, or an ordering assumption that only sometimes held. I spent
+real time on that theory: rerunning the function twice in one process
+(identical both times), diffing the exact input parquet files by hash
+(identical), tracing every array operation for anything order-sensitive.
+
+**Why that was wrong:** the computation was never non-deterministic. It was
+stale. I rewrote `hostel_test.py`'s relation-diversity logic while building
+the lockstep item, verified the rewrite against a brute-force comparison on
+synthetic data, and moved on - but `hostel_test.json` on my own machine was
+last written *before* that rewrite, by the old per-cluster-loop version, and
+nothing in the three items I built afterward ever called `make hostel`
+again. `lockstep.py` calls the same underlying function through
+`run_hostel_test_all_relations`, but writes its own result to `lockstep.json`
+rather than back to `hostel_test.json` - by design, so one item's artefact
+never overwrites another's - which meant the stale file had no reason to
+ever get noticed or refreshed. `docs/results.md` on my machine had been
+reporting a number produced by code that no longer existed in the repository
+for three items' worth of commits.
+
+**What fixed it:** rerunning `make hostel` alone, which regenerated
+`hostel_test.json` with the current code and reproduced the fresh clone's
+numbers exactly. The old figures were never in the README's own summary
+table, only in the full results page and the case-file page it feeds, so the
+drift check I run before every push never had a reason to flag it - that
+check only knows about the specific numbers I told it to watch.
+
+**What I take from it:** "I changed the code and my tests pass" is not the
+same claim as "every artefact this code produces reflects the change" -
+tests exercise the function directly; a stale JSON file on disk exercises
+nothing and answers confidently anyway. This is exactly the failure mode the
+fresh-clone check exists to catch, and exactly why "reusing artefacts is not
+this check" is written into the close instructions in so many words - a
+clone with an empty `data/processed/` cannot reuse a stale file because
+there is no file yet to reuse. I would not have found this without actually
+doing that check rather than trusting that a green test suite meant every
+number on the page was current.
