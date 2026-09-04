@@ -7,7 +7,7 @@ Six of these are worth reading before the rest:
 
 - [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
 - [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
-- [4 September — I called a single noisy step "diminishing returns"](#4-september--i-called-a-single-noisy-step-diminishing-returns) — a knee-finder that mistook sampling variance at the smallest fraction for the shape of the whole curve
+- [4 September — the badge at the top of the README had been red for three days](#4-september--the-badge-at-the-top-of-the-readme-had-been-red-for-three-days) — a green suite on my machine and a missing dependency nobody was watching for
 - [4 September — the fresh clone caught a number my own machine had stopped producing](#4-september--the-fresh-clone-caught-a-number-my-own-machine-had-stopped-producing) — a rewrite verified by its tests, published by a file the rewrite never touched
 - [4 September — time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) — the fair test, built for exactly this weakness, came back a clean null
 - [4 September — propagation lost when labels were scarce, and only won once they were not](#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not) — the hypothesis ran backwards, and the mechanism that explains why is not the one I wrote down beforehand
@@ -1588,3 +1588,45 @@ clone with an empty `data/processed/` cannot reuse a stale file because
 there is no file yet to reuse. I would not have found this without actually
 doing that check rather than trusting that a green test suite meant every
 number on the page was current.
+
+---
+
+## 4 September — the badge at the top of the README had been red for three days
+
+**What broke:** nothing new. `tests.yml` - the GitHub Actions workflow that
+runs the data-free test suite on every push, and whose status badge sits at
+the very top of the README - has failed on every single push since the
+commit that added it, three days and eleven pushes ago. I never once looked.
+
+**What I believed:** that a green `pytest tests/` on my own machine, run
+before every commit this whole time, meant the suite was green, full stop.
+
+**Why that was wrong:** `tests/test_demo.py`'s demo-bundle check spins up a
+subprocess that imports `fastapi.testclient.TestClient`, which needs `httpx`
+internally - and `httpx` is declared in neither `requirements.txt` nor
+`requirements-demo.txt`. On my machine it did not matter: some other,
+unrelated thing I have installed already pulled in `httpx`, so the import
+silently succeeded every time I ran the suite locally, for three days,
+across ten commits, without once producing a local failure. GitHub Actions
+installs only what the two requirements files declare, on a machine with
+nothing else on it, and has been reporting `ModuleNotFoundError: No module
+named 'httpx'` since the workflow's first run. I only checked because I was
+asked directly whether everything was actually done, went to look at the
+Actions tab for what I believe was the first time this project has had one,
+and found eleven failing runs in a row sitting in plain view the whole time.
+
+**What fixed it:** `httpx==0.28.1` - the exact version already silently
+present on my machine - added to `requirements.txt` next to `pytest`, since
+it is a test dependency and not something the pipeline or the demo console
+needs to run. Verified in a venv built the way the workflow builds one:
+`pip install -r requirements.txt` then `pip install -r requirements-demo.txt`
+and nothing else already on the machine to paper over a gap.
+
+**What I take from it:** a passing local test suite is a claim about my
+machine, not about the repository, and I had been quietly treating it as the
+latter for the entire project. The gap between "works here" and "works from
+a clean checkout" is exactly what a clean clone catches and a local run
+cannot - the same lesson the stale hostel-test number just taught two entries
+above this one, from a different direction. I have now looked at the Actions
+tab; I should have made a habit of it from the first commit that added a
+workflow to fail in, not the last day of the project.
