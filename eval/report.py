@@ -2622,6 +2622,7 @@ def _md_list_html(text: str, ordered: bool) -> str:
     hrule = re.compile(r"^-{3,}\s*$")
     items: list[str] = []
     cur: list[str] | None = None
+    blank = False
     for line in text.splitlines():
         if hrule.match(line):
             continue
@@ -2630,10 +2631,18 @@ def _md_list_html(text: str, ordered: bool) -> str:
             if cur is not None:
                 items.append(" ".join(cur))
             cur = [m.group(1)]
+            blank = False
         elif not line.strip():
-            continue
+            blank = True
         elif cur is not None:
+            # A wrapped continuation line is indented. An unindented line after
+            # a blank one is the paragraph *after* the list, not part of it -
+            # without this the trailing "Depth:" line was swallowed into the
+            # final item.
+            if blank and not line[:1].isspace():
+                break
             cur.append(line.strip())
+            blank = False
     if cur is not None:
         items.append(" ".join(cur))
     tag = "ol" if ordered else "ul"
@@ -2827,7 +2836,8 @@ github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
     how_it_works_raw = re.sub(r"```mermaid.*?```", "", how_it_works_raw, flags=re.S)
     how_intro, _, how_list = how_it_works_raw.partition("\n1. ")
     how_intro_html = _fix_links_for_pages(_md_paragraphs_html(how_intro))
-    how_list_html = _md_list_html("1. " + how_list, ordered=True) if how_list else ""
+    how_list_html = (_fix_links_for_pages(_md_list_html("1. " + how_list, ordered=True))
+                     if how_list else "")
 
     results_section = _md_section(readme, "## Results")
     table_md = re.search(r"<!-- results:start -->(.*?)<!-- results:end -->",
@@ -2844,8 +2854,8 @@ github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
 
     ml_section = _md_section(
         readme, "## Where Machine Learning Is Used, and Where It Is Not")
-    ml_html = (_md_table_html(ml_section)
-               + _fix_links_for_pages(_md_paragraphs_html(ml_section)))
+    ml_html = _fix_links_for_pages(
+        _md_table_html(ml_section) + _md_paragraphs_html(ml_section))
 
     five_that_mattered = _fix_links_for_pages(
         _md_list_html(_md_section(failures, "### The five that mattered"), ordered=False),
@@ -2857,8 +2867,10 @@ github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
     repo_map_html = _fix_links_for_pages(
         _md_table_html(_md_section(readme, "## Project Structure")))
 
-    features_html = _md_table_html(_md_section(readme, "## Key Features"))
-    stack_html = _md_table_html(_md_section(readme, "## Tech Stack"))
+    features_html = _fix_links_for_pages(
+        _md_table_html(_md_section(readme, "## Key Features")))
+    stack_html = _fix_links_for_pages(
+        _md_table_html(_md_section(readme, "## Tech Stack")))
     pipeline_html = _fix_links_for_pages(_md_table_html(
         _md_section(readme, "## Data & ML Pipeline")))
 
