@@ -6,22 +6,25 @@ Finding coordinated promotion-abuse rings in transaction graphs — and reportin
 what it costs to be wrong about them.
 
 [![tests](https://github.com/adarshcod30/Orbweaver/actions/workflows/tests.yml/badge.svg)](https://github.com/adarshcod30/Orbweaver/actions/workflows/tests.yml)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![live console](https://img.shields.io/badge/live-console-6d5efc)](https://orbweaver-adarshcod30s-projects.vercel.app)
+[![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-24292f)](https://adarshcod30.github.io/Orbweaver/)
 
-**If you have ten minutes:** [the problem](#the-problem) ·
-[the full results](docs/results.md), thirteen investigations of which four
-came back negative · [what broke](FAILURES.md), which is the file I would
-read first · and `docs/case-files.html`, the page an analyst is actually
-handed — open it in a browser, or run the console below.
+## In one minute
 
-**Live:** [the review console](https://orbweaver-adarshcod30s-projects.vercel.app)
-runs the demo bundle on Vercel; [the static evidence](https://adarshcod30.github.io/Orbweaver/)
-is the same results page and case files on GitHub Pages.
+<!-- oneminute:start -->
 
-**To run it without downloading anything locally:** `pip install -r
-requirements-demo.txt && make console`. The repository carries a
-half-megabyte bundle of computed results and the console serves it when
-there is no processed data.
+A group running many accounts through one delivery-app promotion looks fine order by order; the fraud only exists in the connections between the accounts, which a detector scoring one transaction at a time cannot see. Pruning to suspicious accounts, then peeling for dense structure, catches them at **0.7292 ring precision** against a base rate of 0.2242 — **3.252× chance** — at a measured cost of **0.371 real customers swept into a ring for every fraudster it catches**.
+
+**The finding I would defend hardest:** dense is not the same as fraudulent, and it replicates on every unrelated dataset I have tried it on. Unpruned, the same extractor lands *below* chance here (0.31×) and at *exactly zero* on YelpChi - 25 rings, 1,914 accounts, 0 of them fraudulent. Pruned first, the identical code reaches 14.3× on Amazon reviewers and 6.9× on YelpChi reviews - three platforms, two of them nothing like promotion abuse, saying the same thing ([why this matters](docs/why-this-data.md#transfer)).
+
+[**Live console**](https://orbweaver-adarshcod30s-projects.vercel.app) · [**Full results**](docs/results.md) · [**What broke**](FAILURES.md)
+
+
+<!-- oneminute:end -->
+
+**Why this dataset, and why it was never touched:** [docs/why-this-data.md](docs/why-this-data.md).
+**Every doc in this repository, one line each:** [docs/README.md](docs/README.md).
 
 ---
 
@@ -53,22 +56,44 @@ appears anywhere.
 Orbweaver sits downstream of a per-order scorer and looks at the web instead of
 the strand.
 
-## What it does
+## How it works
+
+Five stages, run over a finished week for the headline numbers and one night
+at a time for the replay: one night of data puts the queue at chance, and it
+takes four to reach the number below. `docs/architecture.md` walks through
+every stage; `docs/design-decisions.md` explains the one place a model is
+allowed to touch the outcome.
+
+```mermaid
+flowchart LR
+    O[orders] --> G["multi-relation graph<br/>(rarity × relation weight)"]
+    G --> S["account scorer<br/>XGBoost, 39 features<br/><i>the one learned step</i>"]
+    S --> P["prune<br/>score cut-off τ"]
+    P --> PE["peel<br/>densest-subgraph, proved bound"]
+    PE --> R["ring + evidence<br/>shares, rarity, ₹, cost"]
+    R --> PO["policy<br/>review / auto-hold / ignore"]
+
+    subgraph nightly["replayed one night at a time"]
+        direction LR
+        N1["night 1"] --> N2["night 2"] --> N3["night 3"] --> N4["night 4"]
+    end
+    PE -. anchored around fixed accounts,<br/>case ids survive the night .-> nightly
+```
 
 1. **Builds a graph** of accounts linked by the entities they share, with each
    edge weighted by how rare that entity is *and* how much that kind of sharing
    actually predicts fraud.
-2. **Scores accounts** with gradient boosting over 39 engineered features.
-3. **Extracts rings** with a densest-subgraph algorithm that carries a proved
-   approximation bound — not a model, so every membership decision is
-   inspectable.
+2. **Scores accounts** with gradient boosting over 39 engineered features —
+   the one learned step in the whole pipeline.
+3. **Prunes, then peels.** A score cut-off removes ordinary accounts first;
+   a densest-subgraph algorithm with a proved approximation bound decides ring
+   membership on what is left, so every membership decision is inspectable —
+   not a model's opinion.
 4. **Attaches evidence** to each ring: what the members share, how rare it is,
    when they acted, the rupees at stake, and the cost of being wrong.
-
-`docs/architecture.md` walks through all of it. It also runs a night at a time
-rather than only over a finished week, and what that costs is measured: one
-night of data puts the queue at chance, and it takes four to reach the headline
-number.
+5. **Prices the response.** A capacity-aware policy recommends review,
+   auto-hold or ignore under a stated reviewer budget, with the two numbers
+   that justify it on every case card.
 
 ## Results
 
@@ -204,7 +229,9 @@ The thirteen findings, including the four that did not work:
   numbers are not Indian. The hostel test is the closest I can get to the
   most India-specific failure mode, and real validation needs Indian data. The
   Amazon and YelpChi runs show the method transfers, but those are US review
-  fraud, not Indian payments.
+  fraud, not Indian payments. [docs/why-this-data.md](docs/why-this-data.md)
+  makes the full case for why this is still the right dataset to have started
+  from.
 - **The generalisation runs are a weaker test than the PPA one.** Amazon and
   YelpChi ship no timestamps, so that split is account-disjoint but not forward
   in time. They are also easier problems — both have real node features, which
@@ -230,19 +257,23 @@ The thirteen findings, including the four that did not work:
 
 One learned component: the account scorer. Ring membership is decided by a
 deterministic objective with an approximation bound, so "why is this account in
-this ring?" has an answer a person can check by hand.
+this ring?" has an answer a person can check by hand. A second, deliberately
+provable method — Fast Belief Propagation — is reported beside it and, on this
+graph, beats it; neither is on the critical path in place of the other.
 
 No language model is anywhere in the detection or decision path.
 **[docs/design-decisions.md](docs/design-decisions.md)** explains the reasoning.
 
 ## What broke
 
-**[FAILURES.md](FAILURES.md)** is the honest log, written as things happened.
-The one I would point at: I trained a model on 183,370 accounts that did not
-exist, because the two order files are independently re-indexed and I had
-joined week-1 behaviour to week-2 labels through an id that means nothing
-across the boundary. It trained cleanly. It converged. Every one of 27 features
-had a fraud/normal ratio of 1.000, which is what gave it away.
+**[FAILURES.md](FAILURES.md)** is the honest log, written as things happened —
+thirty-six entries, [the five that mattered](FAILURES.md#the-five-that-mattered)
+linked at the top. The one I would point at here: I trained a model on 183,370
+accounts that did not exist, because the two order files are independently
+re-indexed and I had joined week-1 behaviour to week-2 labels through an id
+that means nothing across the boundary. It trained cleanly. It converged.
+Every one of 27 features had a fraud/normal ratio of 1.000, which is what gave
+it away.
 
 ## Running it
 
@@ -254,7 +285,8 @@ make reproduce   # everything, end to end
 
 `make reproduce-core` runs the pipeline alone in about fifty minutes if you do
 not want the extra investigations. `make test` runs the suite, including the
-temporal-split and planted-ring tests that gate every number.
+temporal-split and planted-ring tests that gate every number. `make check` runs
+the suite plus the voice check this repository's prose is held to.
 
 To look at the output rather than the numbers:
 
@@ -262,23 +294,26 @@ To look at the output rather than the numbers:
 make console     # review queue at http://127.0.0.1:8000
 ```
 
-**Without downloading anything.** The repository carries a half-megabyte bundle
-of already-computed results, and the console serves it whenever `data/processed`
-is empty — so a clone, six packages and one command is the whole setup:
+**Without downloading anything.** The repository carries a bundle of
+already-computed results (`demo/`, kept under 2 MB), and the console serves it
+whenever `data/processed` is empty — so a clone, six packages and one command
+is the whole setup:
 
 ```bash
 pip install -r requirements-demo.txt && make console
 ```
 
-The pages say which mode they are in. In bundle mode `/check` returns stored
-neighbour counts rather than computing a ring around an account live, because
-35.7 million edges do not belong in something meant to be cloned.
+The same bundle runs the [live console](https://orbweaver-adarshcod30s-projects.vercel.app)
+on Vercel. The pages say which mode they are in: in bundle mode `/check`
+returns stored neighbour counts rather than computing a ring around an account
+live, because 35.7 million edges do not belong in something meant to be
+cloned.
 
 FastAPI serving HTML fragments to HTMX — no build step and no JavaScript
 bundle. `GET /check/{account}` answers for a single account in a fraction of a
 millisecond, which is the shape a per-transaction system would need. There is
 also `docs/case-files.html`, a standalone page with one card per ring that
-needs no server at all.
+needs no server at all, mirrored on [GitHub Pages](https://adarshcod30.github.io/Orbweaver/).
 
 ## Extending it
 
@@ -298,33 +333,85 @@ different kind of platform, so it is evidence about the shape of the argument
 rather than a forecast for payments — but it is measured on real labels
 instead of assumed.
 
-## Data and citations
+## Repository map
+
+| Path | What is in it |
+|---|---|
+| `orbweaver/` | The package: graph construction, scoring, ring extraction, evidence, console, adversarial evaluation |
+| `eval/` | Every evaluation and report script — one investigation each, one artefact each |
+| `tests/` | The suite; the temporal-split and planted-ring tests gate every number |
+| `config/default.yaml` | Every threshold, seed and cost assumption in one place |
+| `scripts/` | Dataset download, the demo-console smoke test, the voice check |
+| `docs/` | Everything below |
+| `docs/results.md` | Every number and figure, generated |
+| `docs/why-this-data.md` | Why PPA, why untouched, what transfer does and does not show |
+| `docs/architecture.md` | The five stages, in depth |
+| `docs/design-decisions.md` | Where machine learning is used, and where it deliberately is not |
+| `docs/data.md` | What the released dataset actually is, measured from the files |
+| `docs/threat-model.md` | What this catches, what it does not, how an adversary evades it |
+| `docs/case-files.html` | The review queue as a static page, no server needed |
+| `demo/` | The ≤2 MB bundle the console and Pages both run from with no dataset present |
+| `api/` | The Vercel entrypoint that serves the same console from the same bundle |
+| `FAILURES.md` | The honest log |
+| `ETHICS.md` | Scope and ethics, six lines |
+| `CITATION.cff` | How to cite this if you use it |
+
+`docs/README.md` indexes the doc set with a one-line "read this if…" for each
+file.
+
+## Related work and citations
 
 - **PPA**, released with PromoGuardian (IEEE S&P 2026) —
   [arXiv:2510.12652](https://arxiv.org/abs/2510.12652) ·
   [code](https://github.com/0xllssFF/PromoGuardian) ·
-  [data](https://osf.io/rasje/?view_only=671050154acf4c0fa6b86a9337e74c2c)
+  [data](https://osf.io/rasje/?view_only=671050154acf4c0fa6b86a9337e74c2c).
+  Contributed the labelled dataset this project measures everything against.
+  Nothing here reuses their code or their checkpoint; the graph construction,
+  scorer, extractor, evidence, replay, anchoring, policy and propagation are
+  mine, run on the data they released.
 - Charikar, *Greedy approximation algorithms for finding dense components*,
-  APPROX 2000 — the ½-approximation
+  APPROX 2000. Contributed the ½-approximation the peeling objective here
+  relies on.
 - Hooi et al., *FRAUDAR: Bounding Graph Fraud in the Face of Camouflage*,
-  KDD 2016 — camouflage-resistant weighting and the bound for this objective
-- Bahmani, Kumar & Vassilvitskii, *Densest Subgraph in Streaming and MapReduce*,
-  VLDB 2012 — the batch peeling used at scale
-- Khuller & Saha, *On finding dense subgraphs*, ICALP 2009 — NP-hardness with a
-  size constraint
+  KDD 2016. Contributed the camouflage-resistant weighting and the bound for
+  the node-prior form of the objective used here.
+- Bahmani, Kumar & Vassilvitskii, *Densest Subgraph in Streaming and
+  MapReduce*, VLDB 2012. Contributed the batch-peeling approximation this
+  project uses to extract rings at 35.7M-edge scale.
+- Khuller & Saha, *On finding dense subgraphs*, ICALP 2009. Established the
+  NP-hardness result that motivates a constant-factor approximation rather
+  than an exact solver once a size constraint is added.
 - Xu, Ma, Fang et al., *Efficient and Effective Algorithms for Generalized
-  Densest Subgraph Discovery*, SIGMOD 2023
-- Tang et al., *GADBench*, NeurIPS 2023 — why gradient boosting is the sensible
-  first scorer, and the source of the two generalisation datasets
+  Densest Subgraph Discovery*, SIGMOD 2023. Contributed the empirical bound
+  this project cites for greedy peeling under a size ceiling.
+- Dai et al., *Anchored Densest Subgraph*, SIGMOD 2022. Contributed the
+  anchored formulation this project uses so a case survives from one night to
+  the next.
+- Greene, Doyle & Cunningham, *Tracking the Evolution of Communities in
+  Dynamic Social Networks*, ASONAM 2010. Contributed the life-cycle events and
+  Jaccard threshold this project's case-identity tracking is built on.
+- Koutra, Ke, Kang, Chau, Pao, Faloutsos, *Unifying Guilt-by-Association
+  Approaches: Theorems and Fast Algorithms*, ECML-PKDD 2011. Contributed Fast
+  Belief Propagation, implemented here exactly as specified and reported
+  beside the learned scorer.
+- Tang et al., *GADBench*, NeurIPS 2023. Contributed the finding that gradient
+  boosting over graph-aggregated features is a strong first scorer, which is
+  why this project starts there, and the two generalisation datasets below.
 - Dou et al., *Enhancing Graph Neural Network-based Fraud Detectors against
-  Camouflaged Fraudsters* (CARE-GNN), CIKM 2020 — the Amazon and YelpChi
-  releases used for the generalisation check
-- Razorpay, [Thirdwatch](https://razorpay.com/blog/detect-fraud-using-ml-ai-thirdwatch/)
-  — the per-order framing this is complementary to
+  Camouflaged Fraudsters* (CARE-GNN), CIKM 2020. Contributed the Amazon and
+  YelpChi releases this project runs unchanged as a transfer check.
+- Razorpay, [Thirdwatch](https://razorpay.com/blog/detect-fraud-using-ml-ai-thirdwatch/) —
+  the per-order framing this project is complementary to, not a replacement
+  for.
 
-## Scope
+## Licence, scope, ethics
 
-Detection only. `ETHICS.md` sets out the boundary in six lines.
+MIT-licensed — [LICENSE](LICENSE). Detection only, and **[ETHICS.md](ETHICS.md)**
+sets out the boundary in six lines: no attack tooling, public research data
+only, case files rather than automated verdicts, false-positive cost reported
+next to every detection number, simulated edges always labelled as simulated,
+and shared attributes treated as evidence for a human to weigh, never as
+guilt.
 
 ---
 
