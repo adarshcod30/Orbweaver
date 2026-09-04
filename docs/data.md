@@ -1,5 +1,23 @@
 # The PPA dataset, as actually released
 
+## In one minute
+
+What is actually on disk is **3,267,961 users and 10,012,449 edges** — the
+released week-2 slice — against the **5,693,351 users and ~29,000,000 edges**
+the paper describes (finding B).
+
+The single most consequential thing on this page is
+[finding E](#finding-e--the-two-order-files-are-separately-re-indexed-from-zero):
+the two order files are independently re-indexed from zero, so
+`order_train.csv` and `order_test.csv` do not share a user id space, which
+rules out joining week-1 behaviour to week-2 labels by id at all.
+
+Three of the eight relations, r2, r4 and r5, are entirely absent from both
+order files, so they cannot be rebuilt from raw orders even though r4 alone
+accounts for 38.41 % of the edges in the authors' `edge.csv`.
+
+---
+
 The data comes from the PromoGuardian authors' OSF project at
 `https://osf.io/rasje/?view_only=671050154acf4c0fa6b86a9337e74c2c`; running
 `make download` fetches all 4.00 GB of it and checks every file against its
@@ -332,3 +350,7 @@ rather than being an accident of where a threshold landed.
    `-1` means unknown and is excluded from metrics, never counted as normal.
 5. Timestamps are day-resolution. No hour-of-day features, and no claims about
    sub-day bursts anywhere in this repository.
+
+---
+
+Back to [README](../README.md).

@@ -2578,7 +2578,8 @@ def _one_minute_block(cfg, cell: dict, base, proc: Path) -> list[str]:
                      f"and {y5['precision_lift_over_base']:.1f}× on YelpChi "
                      f"reviews - three platforms, two of them nothing like "
                      f"promotion abuse, saying the same thing "
-                     f"([why this matters](docs/why-this-data.md#transfer)).\n")
+                     f"([why this matters](docs/why-this-data.md"
+                     f"#how-amazon-yelpchi-and-ieee-cis-test-transfer)).\n")
 
     M.append("[**Live console**](https://orbweaver-adarshcod30s-projects.vercel.app) "
              "· [**Full results**](docs/results.md) · "

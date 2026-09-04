@@ -3,14 +3,13 @@
 An honest log, written as things happen rather than reconstructed at the end.
 Each entry records what I believed, why it was wrong, and what fixed it.
 
-Six of these are worth reading before the rest:
+### The five that mattered
 
-- [2 September — the densest groups were the innocent ones](#2-september--the-densest-groups-were-the-innocent-ones) — the result that changed the design: dense is not the same as fraudulent
-- [2 September — I trained a model on 183,370 strangers](#2-september--i-trained-a-model-on-183370-strangers) — two files, two id spaces, and a silent leak that scored well
-- [4 September — the badge at the top of the README had been red for three days](#4-september--the-badge-at-the-top-of-the-readme-had-been-red-for-three-days) — a green suite on my machine and a missing dependency nobody was watching for
-- [4 September — the fresh clone caught a number my own machine had stopped producing](#4-september--the-fresh-clone-caught-a-number-my-own-machine-had-stopped-producing) — a rewrite verified by its tests, published by a file the rewrite never touched
-- [4 September — time did not separate the hostel from the ring, even where the data gave it every chance to](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to) — the fair test, built for exactly this weakness, came back a clean null
-- [4 September — propagation lost when labels were scarce, and only won once they were not](#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not) — the hypothesis ran backwards, and the mechanism that explains why is not the one I wrote down beforehand
+- **Dense groups were innocent** — the densest subgraphs kept turning out to be ordinary clusters rather than fraud rings, and that single result changed how ranking works in this project. [Read it →](#2-september--the-densest-groups-were-the-innocent-ones)
+- **A model trained on strangers** — two files used two different id spaces, and the silent leak between them let a model score well on accounts it had never truly seen. [Read it →](#2-september--i-trained-a-model-on-183370-strangers)
+- **A rewrite the tests missed** — a fresh clone produced a number my own machine no longer did, because the rewrite was checked by its tests but published by a file the rewrite never touched. [Read it →](#4-september--the-fresh-clone-caught-a-number-my-own-machine-had-stopped-producing)
+- **The hostel test came back clean** — time alone did not separate the hostel from the ring even where the data gave it every chance to, and the fair test built for exactly that weakness returned a clean null. [Read it →](#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to)
+- **Propagation ran backwards** — belief propagation lost when labels were scarce and only won once they were not, the opposite of the stated hypothesis, with the real mechanism not the one written down beforehand. [Read it →](#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not)
 ---
 
 ## 2 September — the first version of this project was the wrong project

@@ -1,5 +1,32 @@
 # Threat model
 
+## In one minute
+
+Orbweaver looks for one operator behind many accounts, and it covers four
+abuse types directly, because PPA's own labels cover them: new-user offer
+farming, referral rings, cashback farming, and stocking-up/reseller rings.
+
+The obvious way a system like this goes wrong is flagging people who simply
+live together — a hostel floor, a paying-guest place, a joint family. I
+tested that directly: of 2,446 co-located groups found in the data (people
+sharing a delivery location, overwhelmingly labelled normal), only 2 of them
+— 0.08% — have any member placed in a ring.
+
+Of the ways an adversary can evade this, one still works at low cost:
+fragmenting the ring into small cells. The other three cost the attacker
+more and still leave a trace. See
+[How an adversary would evade it](#how-an-adversary-would-evade-it) for the
+full argument; the cost ladder is below.
+
+```mermaid
+flowchart TD
+    A["1. Fragment the ring<br/>split into cells sharing nothing across them<br/><br/>Cost to attacker: low —<br/>behavioural edges recover +0.0237 precision<br/>at cells of three, but recover nothing<br/>at cells of twenty, so this is the attack that works"]
+    B["2. Dilute with camouflage<br/>add edges to ordinary accounts through common entities<br/><br/>Cost to attacker: low, but ineffective —<br/>rarity weighting makes a common entity worth<br/>almost nothing, so density barely moves;<br/>working camouflage needs rare, genuinely<br/>distinct addresses and instruments"]
+    C["3. Slow down<br/>spread the same behaviour over a longer window<br/><br/>Cost to attacker: real —<br/>directly reduces the attacker's<br/>return per unit time"]
+    D["4. Use genuinely separate identities<br/>different address, device, instrument, promotion<br/>per account, never overlapping<br/><br/>Cost to attacker: highest —<br/>defeats the method completely, but removes<br/>most of the economic advantage of running a ring"]
+    A --> B --> C --> D
+```
+
 ## What Orbweaver is built to catch
 
 One party controlling many accounts to extract value that was meant for many
@@ -92,3 +119,7 @@ structure. Lowering the floor to catch it raises the false-positive rate on
 ordinary small groups such as families. That trade-off is a business decision
 about review capacity and customer harm, not a modelling one, which is why the
 operating point is reported as a curve rather than chosen here.
+
+---
+
+Back to [README](../README.md).

@@ -1,0 +1,76 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "Orbweaver: finding coordinated promotion-abuse rings in transaction graphs"
+type: software
+authors:
+  - family-names: Dwivedi
+    given-names: Adarsh
+    email: 23ucs509@lnmiit.ac.in
+repository-code: "https://github.com/adarshcod30/Orbweaver"
+url: "https://orbweaver-adarshcod30s-projects.vercel.app"
+abstract: >-
+  A densest-subgraph pipeline for detecting coordinated promotion-abuse
+  rings: multi-relation graph construction with rarity- and lift-weighted
+  edges, gradient-boosted account scoring, a provably-approximate greedy
+  peeling extractor, case-file evidence generation, anchored night-to-night
+  ring tracking, a capacity-aware review policy, and a Fast Belief
+  Propagation label-propagation alternative to the learned scorer. Built for
+  the Razorpay AI Buildathon, Track 02.
+keywords:
+  - fraud-detection
+  - graph-algorithms
+  - anomaly-detection
+  - densest-subgraph
+  - payments
+  - fintech
+license: MIT
+date-released: "2026-09-04"
+references:
+  - type: article
+    title: "PromoGuardian"
+    authors:
+      - name: "Ma et al."
+    year: 2026
+    notes: "IEEE S&P 2026 — arXiv:2510.12652. Released the PPA dataset this project is measured against."
+  - type: article
+    title: "Greedy approximation algorithms for finding dense components in a graph"
+    authors:
+      - family-names: Charikar
+        given-names: Moses
+    year: 2000
+    notes: "APPROX 2000 — the 1/2-approximation the ring-extraction objective relies on."
+  - type: article
+    title: "FRAUDAR: Bounding Graph Fraud in the Face of Camouflage"
+    authors:
+      - name: "Hooi et al."
+    year: 2016
+    notes: "KDD 2016 — camouflage-resistant weighting and the bound for the node-prior form of the objective used here."
+  - type: article
+    title: "Densest Subgraph in Streaming and MapReduce"
+    authors:
+      - family-names: Bahmani
+        given-names: Bahman
+      - family-names: Kumar
+        given-names: Ravi
+      - family-names: Vassilvitskii
+        given-names: Sergei
+    year: 2012
+    notes: "VLDB 2012 — the batch-peeling approximation used at scale."
+  - type: article
+    title: "Unifying Guilt-by-Association Approaches: Theorems and Fast Algorithms"
+    authors:
+      - name: "Koutra et al."
+    year: 2011
+    notes: "ECML-PKDD 2011 — Fast Belief Propagation, implemented here as the provable alternative to the learned scorer."
+  - type: article
+    title: "GADBench"
+    authors:
+      - name: "Tang et al."
+    year: 2023
+    notes: "NeurIPS 2023 — source of the Amazon and YelpChi generalisation datasets."
+  - type: article
+    title: "Enhancing Graph Neural Network-based Fraud Detectors against Camouflaged Fraudsters"
+    authors:
+      - name: "Dou et al."
+    year: 2020
+    notes: "CIKM 2020 — released the Amazon and YelpChi datasets used for the generalisation check."

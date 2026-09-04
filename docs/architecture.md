@@ -1,5 +1,39 @@
 # How Orbweaver works
 
+## In one minute
+
+Order data goes in; ranked, evidenced rings of accounts come out, through
+five stages, one of which is learned:
+
+- **Load** — parse the two order files, cut on `order_time`, validate the
+  temporal split.
+- **Build graph** — link accounts that share an entity, weighted by how rare
+  that entity is and how incriminating that relation type has proven to be.
+- **Score accounts** — XGBoost over 39 engineered features; the only stage
+  in the pipeline that is learned.
+- **Prune, then peel** — drop accounts below a score cut-off, then extract
+  dense subgraphs by densest-subgraph peeling, a deterministic search that
+  carries a proved approximation bound.
+- **Attach evidence** — for each ring, the entities its members share, when,
+  how much money is at stake, and the cost of being wrong.
+
+The headline: **ring precision 0.7292** against a base rate of 0.2242, at a
+cost of **0.371 real customers flagged for every fraudster caught**.
+
+**The temporal split.** Forward in time, account-disjoint: order data splits
+into week 1, which produces training features, and week 2, which is where
+the rings are extracted from. Week 2 itself splits into an early sub-window
+that trains and calibrates the scorer, and a late sub-window whose accounts
+are held out and only ever scored.
+
+```mermaid
+flowchart TB
+    O[Order data] --> W1[Week 1 — training features]
+    O --> W2[Week 2 — rings extracted from here]
+    W2 --> S1[Early sub-window — train + calibrate the scorer]
+    W2 --> S2[Late sub-window — score held-out accounts]
+```
+
 Five stages. Only one of them is learned, and the boundary is deliberate —
 `docs/design-decisions.md` explains why it sits where it does.
 
@@ -87,6 +121,15 @@ g(S) = ( Σ_{(u,v) ∈ E[S]} w(u,v)  +  λ · Σ_{v ∈ S} s(v) ) / |S|
 over sets `S` with `k_min ≤ |S| ≤ k_max`, by repeatedly removing the
 lowest-contribution account and keeping the best set seen.
 
+```mermaid
+flowchart TD
+    A[Candidate set] --> B[Compute marginal density contribution per account]
+    B --> C[Remove the lowest-contribution account]
+    C --> D{At the size floor?}
+    D -- No --> B
+    D -- Yes --> E[Keep the best set seen]
+```
+
 **The guarantee.** Unconstrained, greedy peeling on this objective is a
 **½-approximation** — the set it returns has at least half the density of the
 best possible one (Charikar 2000; Hooi et al., FRAUDAR, KDD 2016, for the
@@ -149,3 +192,7 @@ platform have ever used, and that single line is the case.
 - **Every detection number carries its false-positive side**, because a ring is
   a recommendation to act on a group, and being wrong about a group of forty
   costs forty customers at once.
+
+---
+
+Back to [README](../README.md).

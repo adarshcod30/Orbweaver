@@ -1,5 +1,22 @@
 # Where machine learning is used, and where it deliberately is not
 
+## In one minute
+
+Exactly one learned component sits in this pipeline: an XGBoost account
+scorer (400 trees, depth 6, 39 features). Everything downstream of it —
+ring extraction — is a deterministic algorithm, densest-subgraph peeling
+with a proved 1/2-approximation bound (Charikar, 2000). Every other stage,
+from graph weighting through evidence to the cost arithmetic, is
+deterministic as well; nothing else in the pipeline is learned.
+
+Beside the scorer I report a second method that is provable rather than
+learned: Fast Belief Propagation (Koutra et al., ECML-PKDD 2011), a sparse
+linear system solved to a checked convergence condition. On this graph it
+beats the learned scorer outright — 0.4615 held-out AUPRC at full label
+availability against XGBoost's 0.3796 — and pruning on its beliefs alone
+reaches 0.9886 ring precision against the learned scorer's own 0.7292 at the
+same review cost.
+
 The pipeline has exactly one learned component, and the boundary around it is
 the most deliberate design decision in this project.
 
@@ -132,3 +149,7 @@ There is one place a language model would genuinely help: writing a finished
 case file up in plain English for whoever reads it. That is read-only, strictly
 downstream of every decision, and entirely skippable. It is not implemented,
 and if it were, removing it would change no number in this repository.
+
+---
+
+Back to [README](../README.md).
