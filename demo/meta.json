@@ -6,13 +6,13 @@
   "files": {
     "accounts.parquet": 379773,
     "anchored.json": 20224,
-    "hostel_test.json": 965,
+    "hostel_test.json": 964,
     "offers.json": 1157397,
     "policy.json": 58885,
     "replay.json": 16942,
     "rings.json": 56754
   },
-  "bytes": 1690940,
+  "bytes": 1690939,
   "limit_bytes": 41943040,
   "note": "Precomputed results, so anyone can look at the console without the 4 GB dataset. The graph itself is not in here - /check serves stored neighbour counts rather than computing a ring live."
 }
