@@ -127,6 +127,7 @@ def page(title: str, description: str, body: str, active: str = "") -> str:
 <meta property="og:description" content="{esc(description)}">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23fff2ec'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23c2410c'/%3E%3C/svg%3E">
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 <style>{CSS}{EXTRA_CSS}</style></head><body>
 {masthead(active)}
@@ -153,8 +154,17 @@ padding:16px 20px;margin-bottom:12px;cursor:pointer;box-shadow:var(--shadow)}
 .row:hover{border-color:var(--accent)}
 .row:focus-visible{outline:none;box-shadow:var(--focus)}
 .row .top{display:flex;justify-content:space-between;gap:16px;align-items:baseline}
+.row .top strong{font-size:15.5px;letter-spacing:-.01em}
+.row .money{color:var(--accent);font-weight:700;white-space:nowrap}
 .row .why{color:var(--muted);font-size:13px;margin-top:5px}
+.row .pills{margin-top:9px}
 .empty{color:var(--muted);padding:30px 0}
+.figrow{display:grid;grid-template-columns:1fr;gap:18px;margin:18px 0 4px}
+@media (min-width:860px){.figrow{grid-template-columns:1fr 1fr}}
+.figrow figure{margin:0}
+.figrow img{width:100%;border:1px solid var(--line);border-radius:8px;
+background:var(--surface)}
+.figrow figcaption{color:var(--muted);font-size:12.5px;margin-top:7px;line-height:1.5}
 """
 
 
@@ -179,11 +189,13 @@ def ring_rows(report: dict, shares: str, min_fraud: int) -> str:
             f'hx-get="/ring/{c["rank"]}" hx-target="#detail" '
             f'hx-trigger="click, keyup[key==\'Enter\']" hx-swap="innerHTML">'
             f'<div class="top"><strong>Ring #{c["rank"]} — {c["size"]} accounts</strong>'
-            f'<span>₹{c.get("rupees_at_stake", 0):,.0f}</span></div>'
+            f'<span class="money">₹{c.get("rupees_at_stake", 0):,.0f}</span></div>'
             f'<div class="why">{esc(why)}</div>'
-            f'<div class="why">{lab.get("fraud", 0)} known fraud · '
-            f'{lab.get("normal", 0)} known good · '
-            f'{lab.get("unlabelled", 0)} unreviewed</div></div>')
+            f'<div class="pills">'
+            f'<span class="tag f">{lab.get("fraud", 0)} known fraud</span>'
+            f'<span class="tag n">{lab.get("normal", 0)} known good</span>'
+            f'<span class="tag u">{lab.get("unlabelled", 0)} unreviewed</span>'
+            f'</div></div>')
     return "".join(out) or '<div class="empty">Nothing matches that filter.</div>'
 
 
@@ -198,6 +210,19 @@ def index() -> str:
                                  "produce ring_report.json, then reload."),
                      active="queue")
     best = report.get("best_cell", {})
+    cell = report.get("grid", {}).get(
+        f"tau={best.get('tau')},lambda={best.get('lambda')}", {})
+    cases = report.get("case_files", [])
+    at_stake = sum(c.get("rupees_at_stake", 0) for c in cases)
+    bar = "".join(
+        f'<div class="stat"><b>{esc(v)}</b><span>{esc(t)}</span></div>'
+        for v, t in [
+            (len(cases), "rings in the queue"),
+            (f'{cell.get("accounts_in_rings", 0):,}', "accounts surfaced"),
+            (cell.get("fraud_members"), "known fraud among them"),
+            (best.get("ring_precision"), "share worth reviewing"),
+            (f"₹{at_stake:,.0f}", "at stake in this queue"),
+        ] if v is not None)
     opts = "".join(
         f'<option value="{k}">{v}</option>' for k, v in
         [("any", "anything"), ("r1", "order location"), ("r3", "delivery record"),
@@ -209,8 +234,11 @@ against a base rate of {esc(report.get('base_rate_among_labelled'))}. A ring is
 a candidate — several accounts a shared entity ties together, dense enough to
 look coordinated — not a verdict.</p>
 {DEMO_BANNER if demo_mode() else ""}
+<div class="bar">{bar}</div>
 <div class="assume">Leads for a human to review, not verdicts. Rupee figures use
 an assumed value — this dataset ships no monetary amounts.</div>
+<p class="sub">Filter the queue, then open a ring for its case file — what the
+members share, how rare it is, and the action the policy recommends.</p>
 <form class="controls" hx-get="/rings" hx-target="#rings" hx-trigger="change, load">
   <div><label>shares a</label><select name="shares">{opts}</select></div>
   <div><label>at least this many known fraud</label>
@@ -531,9 +559,21 @@ stopped there. "Stopped" and "running total" assume one analyst working two
 hours a night at the capacity-aware policy, on the same stated ₹ assumptions
 as the rest of this console.</div>
 {f'<p class="sub">{esc(events_line)}</p>' if events_line else ''}
-<p class="sub">Figures: <a href="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/time_to_detection.png">time_to_detection.png</a>
-· <a href="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/ring_persistence.png">ring_persistence.png</a>
-· full numbers in <a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md#a-ring-you-can-find-again-tomorrow">docs/results.md</a>.</p>"""
+<div class="figrow">
+<figure>
+<img src="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/time_to_detection.png" loading="lazy"
+ alt="Ring precision and days-to-detection, replaying the window night by night">
+<figcaption>One night of data lands at the base rate; it takes four nights of
+replay to reach the precision this project reports as its headline number.</figcaption>
+</figure>
+<figure>
+<img src="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/ring_persistence.png" loading="lazy"
+ alt="Share of final-night rings with a predecessor the night before, anchored against global extraction">
+<figcaption>Anchoring the extraction around fixed accounts is what makes a case
+trackable from one night to the next — global peeling loses almost every case.</figcaption>
+</figure>
+</div>
+<p class="sub">Full numbers in <a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md#a-ring-you-can-find-again-tomorrow">docs/results.md</a>.</p>"""
     return page("Orbweaver — nightly replay",
                 "Replaying the scoring window one night at a time: does a "
                 "ring found tonight survive to be the same case tomorrow.",

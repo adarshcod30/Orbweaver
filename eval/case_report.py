@@ -126,6 +126,7 @@ border:1px dashed var(--line);border-radius:var(--radius);background:var(--surfa
 .empty-state b{display:block;color:var(--ink);font-size:17px;margin-bottom:6px}
 .footer{border-top:1px solid var(--line);margin-top:40px;padding-top:20px;
 color:var(--muted);font-size:13.5px}
+.backlink{margin:0 0 20px}
 @media (prefers-reduced-motion:no-preference){
 .card,.row,.btn,.tab{transition:border-color 200ms var(--ease),
 box-shadow 200ms var(--ease),background 200ms var(--ease),color 200ms var(--ease)}
@@ -317,6 +318,8 @@ def render(report: dict, actions: dict | None = None, ctx: dict | None = None,
     a('<meta name="twitter:card" content="summary">')
     a(f"<style>{CSS}</style></head><body>")
     a('<div class="wrap">')
+    a('<p class="backlink"><a class="btn ghost" href="index.html">'
+      '&larr; Back to the overview</a></p>')
     a("<h1>Ring case files</h1>")
     a(f'<p class="sub">Week-2 graph, {graph.get("edges", 0):,} edges. '
       f'Score cut-off τ = {esc(best.get("tau"))}, λ = {esc(best.get("lambda"))}. '

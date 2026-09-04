@@ -11,11 +11,11 @@
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](Makefile)
 [![last commit](https://img.shields.io/github/last-commit/adarshcod30/Orbweaver)](https://github.com/adarshcod30/Orbweaver/commits/main)
 
-**[▶ Live console](https://orbweaver-adarshcod30s-projects.vercel.app)** &nbsp;·&nbsp;
-**[📊 Docs site](https://adarshcod30.github.io/Orbweaver/)** &nbsp;·&nbsp;
-**[📈 All results](docs/results.md)** &nbsp;·&nbsp;
-**[🔧 What broke](FAILURES.md)** &nbsp;·&nbsp;
-**[🐛 Issues](https://github.com/adarshcod30/Orbweaver/issues)**
+**[Live console](https://orbweaver-adarshcod30s-projects.vercel.app)** &nbsp;·&nbsp;
+**[Docs site](https://adarshcod30.github.io/Orbweaver/)** &nbsp;·&nbsp;
+**[All results](docs/results.md)** &nbsp;·&nbsp;
+**[What broke](FAILURES.md)** &nbsp;·&nbsp;
+**[Issues](https://github.com/adarshcod30/Orbweaver/issues)**
 
 <img src="docs/social-preview.png" alt="Orbweaver: 0.7292 ring precision against a 0.2242 base rate, at 0.371 real customers per fraudster caught, 44% of rings with a case open the night before" width="820">
 
@@ -84,17 +84,17 @@ cost of being wrong.
 
 ## Key Features
 
-| | Feature | What it does |
-|---|---|---|
-| 🕸 | **Multi-relation graph** | Edges weighted by entity rarity × measured fraud lift, fitted on training accounts only |
-| ✂️ | **Prune, then peel** | Score cut-off first, then greedy peeling with a ½-approximation bound |
-| 🔍 | **Evidence per ring** | Shared entities, coverage, platform-wide rarity, day concentration, ₹ at stake |
-| ⚖️ | **Cost always attached** | Every precision number ships with real customers swept in per fraudster caught |
-| 🎯 | **Capacity-aware policy** | Exact knapsack over reviewer minutes → review / auto-hold / ignore, with both numbers |
-| 🌙 | **Anchored nightly replay** | Stable case ids so tonight's ring is recognisably tomorrow's case |
-| 🖥 | **Live analyst console** | FastAPI + HTMX: queue, case files, offers, account lookup, replay. No build step |
-| ♻️ | **Reproducible** | `make reproduce` regenerates every number, table and figure. Nothing typed by hand |
-| 📓 | **Honest failure log** | [36 dated entries](FAILURES.md) — what broke, what I believed, why it was wrong |
+| Feature | What it does |
+|---|---|
+| **Multi-relation graph** | Edges weighted by entity rarity × measured fraud lift, fitted on training accounts only |
+| **Prune, then peel** | Score cut-off first, then greedy peeling with a ½-approximation bound |
+| **Evidence per ring** | Shared entities, coverage, platform-wide rarity, day concentration, ₹ at stake |
+| **Cost always attached** | Every precision number ships with real customers swept in per fraudster caught |
+| **Capacity-aware policy** | Exact knapsack over reviewer minutes → review / auto-hold / ignore, with both numbers |
+| **Anchored nightly replay** | Stable case ids so tonight's ring is recognisably tomorrow's case |
+| **Live analyst console** | FastAPI + HTMX: queue, case files, offers, account lookup, replay. No build step |
+| **Reproducible** | `make reproduce` regenerates every number, table and figure. Nothing typed by hand |
+| **Honest failure log** | [36 dated entries](FAILURES.md) — what broke, what I believed, why it was wrong |
 
 ## Tech Stack
 
@@ -112,23 +112,41 @@ cost of being wrong.
 ## System Architecture
 
 ```mermaid
-flowchart LR
-    O([orders]) --> G["multi-relation graph<br/><i>rarity × relation weight</i>"]
-    G --> S["account scorer<br/><b>XGBoost · 39 features</b><br/><i>the one learned step</i>"]
-    S --> P["prune<br/><i>score cut-off τ</i>"]
-    P --> PE["peel<br/><i>densest-subgraph<br/>proved ½ bound</i>"]
-    PE --> R["ring + evidence<br/><i>shares · rarity · ₹ · cost</i>"]
-    R --> PO["policy<br/><i>review / hold / ignore</i>"]
-    PO --> Q([analyst queue])
-
-    subgraph nightly [" replayed one night at a time "]
+flowchart TB
+    subgraph INGEST["  1 · INGEST  "]
         direction LR
-        N1[night 1] --> N2[night 2] --> N3[night 3] --> N4[night 4]
+        O(["orders<br/><small>43.9M rows</small>"]) --> G["multi-relation graph<br/><b>rarity x relation weight</b>"]
     end
-    PE -. anchored around fixed accounts<br/>case ids survive the night .-> nightly
 
-    style S fill:#fff2ec,stroke:#c2410c
-    style PE fill:#fff2ec,stroke:#c2410c
+    subgraph DETECT["  2 · DETECT  "]
+        direction LR
+        S["account scorer<br/><b>XGBoost, 39 features</b><br/>the one learned step"] --> P["prune<br/><b>score cut-off tau</b>"]
+        P --> PE["peel<br/><b>densest subgraph</b><br/>proved 1/2 bound"]
+    end
+
+    subgraph ACT["  3 · ACT  "]
+        direction LR
+        R["ring + evidence<br/>shares, rarity, INR, cost"] --> PO["policy<br/><b>review / hold / ignore</b>"]
+        PO --> Q(["analyst queue<br/>case files"])
+    end
+
+    INGEST --> DETECT --> ACT
+    PE -. anchored around fixed accounts,<br/>so case ids survive the night .-> NIGHTLY
+
+    subgraph NIGHTLY["  replayed one night at a time  "]
+        direction LR
+        N1["night 1<br/><small>chance</small>"] --> N2["night 2"] --> N3["night 3"] --> N4["night 4<br/><small>headline</small>"]
+    end
+
+    classDef learned fill:#fff2ec,stroke:#c2410c,stroke-width:2px,color:#1c1c1c
+    classDef proved fill:#f0fdf4,stroke:#166534,stroke-width:2px,color:#1c1c1c
+    classDef plain fill:#ffffff,stroke:#c9c9c9,color:#1c1c1c
+    classDef terminal fill:#f5f5f4,stroke:#6b6b6b,color:#1c1c1c
+    class S learned
+    class PE proved
+    class G,P,R,PO plain
+    class O,Q terminal
+    class N1,N2,N3,N4 plain
 ```
 
 1. **Build the graph** — accounts linked by shared entities, each edge weighted by how rare that entity is *and* how much that sharing predicts fraud.
@@ -219,19 +237,19 @@ figures: **[docs/results.md](docs/results.md)**.
 
 | # | Finding | Outcome |
 |---|---|---|
-| 1 | **Dense is not the same as fraudulent.** On the raw graph the densest subgraphs are large ordinary communities — people who happened to use the same promotion — and ring precision comes out *below* the base rate. Filtering to suspicious accounts first, then looking for dense structure inside that region, is what makes the output useful. It replicates on two unrelated datasets: run unchanged on Amazon reviewers and YelpChi reviews, the unpruned extractor again lands below base rate — on YelpChi at *exactly zero*, 25 rings and 1,914 accounts without a single fraudster — while pruning first reaches 14.3× and 6.9× | ✅ the single most important thing I learned |
-| 2 | **The relation that dominates the graph carries the weakest signal.** Promotion edges are 70% of the graph at 1.76× fraud lift; location edges are 16% at 3.71×. Weighting relations by measured evidential value, fitted on training accounts only, follows directly | ✅ drives the edge weighting |
-| 3 | **The link only a platform can see is worth measuring, not assuming.** On YelpChi, removing the one relation that spans businesses costs two to four points of ring precision at equal review capacity. I had argued the aggregator's advantage with simulated edges before this; now it is a measurement on real labels, and the simulated version is only a sensitivity check | ✅ a measurement replaced a guess |
-| 4 | **One night of data is worth nothing, and rings do not survive the night.** Replaying a night at a time, a single night puts the queue at chance, and it takes four nights to reach the headline. Worse, no ring found on the last night had a recognisable predecessor — a case could not be tracked at all. **Anchoring the extraction fixed it**: 44% of final rings now have a case open the night before against 0% for the global extractor, at a cost of 0.0125 precision | 🔁 failed, then fixed |
-| 5 | **The crudest baseline beat the model I built to replace it.** A ring-level confidence model lost to simply ranking by the mean score of a ring's members, at every depth. The reason is visible in the training data: 90.6% of candidate rings are already fraudulent, so there is almost nothing for a ring-level model to separate | ❌ negative |
-| 6 | **Ring history does not transfer to the next window.** Feeding "was this account in a ring last window" back into the account score moves held-out AUPRC by +0.0011. The ceiling was set before the model ran: the feature is non-zero for 0.15% of held-out accounts. Rings are window-specific objects — the accounts recur, the groupings do not | ❌ negative |
-| 7 | **Behaviour edges raise the price of fragmentation without defeating it.** Splitting a ring into cells of three takes precision from 0.73 to 0.45. Mutual nearest-neighbour edges in behaviour space — which an attacker cannot cut by severing shared entities — recover +0.0237 of that, and nothing at all at cells of twenty | ⚠️ fragmentation still works |
-| 8 | **The method transfers to a payment processor's graph, and its weakest point moves with it.** On IEEE-CIS the same pipeline reaches 0.5079 ring precision at 18.1× base rate. But the apartment-building analogue of the hostel test touches 4 of 7 clusters, against 2 of 2,446 here, because the billing address is at once the most informative relation and the thing that legitimately ties every card in a building together | ⚠️ transfers, at a cost |
-| 9 | **The analyst is not the bottleneck I built for.** Pricing review against auto-hold under a fixed budget, the fraud stopped does not change between thirty analyst-minutes a night and two hundred and forty — auto-holding already stops it. What analyst time buys is a 39% fall in legitimate value harmed. On these assumptions the reviewer is a false-positive control rather than a detector | ✅ not what I expected |
-| 10 | **Telling a crowd from a ring by when it formed did not pay off, and the fair test explains why.** Burstiness weighting costs 0.0149 precision on PPA with no clean per-relation story. IEEE-CIS was built to test this properly, with second-resolution timestamps PPA cannot offer, and returned as clean a null as this project has produced: the same 4 of 7 apartment clusters at *every* resolution from one hour to one day. The billing address is not informative *despite* being shared by a legitimate building — it is informative *because of it* | ❌ clean null |
-| 11 | **Which offers are farmed splits into a precision ranking and a coverage ranking — and they are not the same offers.** A leakage score built from no label beats base rate by 2.5–3.8× at top 25 and 50. But leakage ranks small, concentrated offers first, capping how much fraud it can touch: fifty offers by leakage cover 0.04% of labelled fraud, against 7.1% — 19.7× the ring's own recall ceiling — ranked by raw size, at the cost of reviewing 325,494 accounts rather than a few hundred | ✅ a capacity decision, not a technical one |
-| 12 | **A team with almost no confirmed labels is not starting from nothing.** Prune-then-peel already beats base rate at the smallest fraction tested — 1,146 confirmed accounts, 0.5% of the training pool. Held-out AUPRC keeps climbing all the way to 100%; no plateau appears in the range tested | ✅ |
-| 13 | **A method with no fitted model at all beat both learned scorers, and not for the reason I expected.** Fast Belief Propagation — one sparse linear system, a proven convergence condition, priors from confirmed labels only — reaches 0.4615 held-out AUPRC against XGBoost's 0.3796 and GraphSAGE's 0.3819, and pruning on its beliefs alone lifts ring precision to 0.9886 with three times the recall at the same review cost. The hypothesis was that propagation wins when labels are *scarce*; the data says the opposite — it trails both learned scorers from 0.5% through 20% of the pool and only crosses over at 50%. Propagation needs seeds to spread from | ✅ hypothesis wrong, result right |
+| 1 | **Dense is not the same as fraudulent.** On the raw graph the densest subgraphs are large ordinary communities — people who happened to use the same promotion — and ring precision comes out *below* the base rate. Filtering to suspicious accounts first, then looking for dense structure inside that region, is what makes the output useful. It replicates on two unrelated datasets: run unchanged on Amazon reviewers and YelpChi reviews, the unpruned extractor again lands below base rate — on YelpChi at *exactly zero*, 25 rings and 1,914 accounts without a single fraudster — while pruning first reaches 14.3× and 6.9× |  the single most important thing I learned | Held up — the one I would defend hardest |
+| 2 | **The relation that dominates the graph carries the weakest signal.** Promotion edges are 70% of the graph at 1.76× fraud lift; location edges are 16% at 3.71×. Weighting relations by measured evidential value, fitted on training accounts only, follows directly |  drives the edge weighting | Held up — drives the edge weighting |
+| 3 | **The link only a platform can see is worth measuring, not assuming.** On YelpChi, removing the one relation that spans businesses costs two to four points of ring precision at equal review capacity. I had argued the aggregator's advantage with simulated edges before this; now it is a measurement on real labels, and the simulated version is only a sensitivity check |  a measurement replaced a guess | Held up — a measurement replaced a guess |
+| 4 | **One night of data is worth nothing, and rings do not survive the night.** Replaying a night at a time, a single night puts the queue at chance, and it takes four nights to reach the headline. Worse, no ring found on the last night had a recognisable predecessor — a case could not be tracked at all. **Anchoring the extraction fixed it**: 44% of final rings now have a case open the night before against 0% for the global extractor, at a cost of 0.0125 precision |  failed, then fixed | Failed, then fixed by anchoring |
+| 5 | **The crudest baseline beat the model I built to replace it.** A ring-level confidence model lost to simply ranking by the mean score of a ring's members, at every depth. The reason is visible in the training data: 90.6% of candidate rings are already fraudulent, so there is almost nothing for a ring-level model to separate |  negative | Negative result |
+| 6 | **Ring history does not transfer to the next window.** Feeding "was this account in a ring last window" back into the account score moves held-out AUPRC by +0.0011. The ceiling was set before the model ran: the feature is non-zero for 0.15% of held-out accounts. Rings are window-specific objects — the accounts recur, the groupings do not |  negative | Negative result |
+| 7 | **Behaviour edges raise the price of fragmentation without defeating it.** Splitting a ring into cells of three takes precision from 0.73 to 0.45. Mutual nearest-neighbour edges in behaviour space — which an attacker cannot cut by severing shared entities — recover +0.0237 of that, and nothing at all at cells of twenty |  fragmentation still works | Partial — fragmentation still works |
+| 8 | **The method transfers to a payment processor's graph, and its weakest point moves with it.** On IEEE-CIS the same pipeline reaches 0.5079 ring precision at 18.1× base rate. But the apartment-building analogue of the hostel test touches 4 of 7 clusters, against 2 of 2,446 here, because the billing address is at once the most informative relation and the thing that legitimately ties every card in a building together |  transfers, at a cost | Transfers, at a cost |
+| 9 | **The analyst is not the bottleneck I built for.** Pricing review against auto-hold under a fixed budget, the fraud stopped does not change between thirty analyst-minutes a night and two hundred and forty — auto-holding already stops it. What analyst time buys is a 39% fall in legitimate value harmed. On these assumptions the reviewer is a false-positive control rather than a detector |  not what I expected | Held up — not what I expected |
+| 10 | **Telling a crowd from a ring by when it formed did not pay off, and the fair test explains why.** Burstiness weighting costs 0.0149 precision on PPA with no clean per-relation story. IEEE-CIS was built to test this properly, with second-resolution timestamps PPA cannot offer, and returned as clean a null as this project has produced: the same 4 of 7 apartment clusters at *every* resolution from one hour to one day. The billing address is not informative *despite* being shared by a legitimate building — it is informative *because of it* |  clean null | Negative result — a clean null |
+| 11 | **Which offers are farmed splits into a precision ranking and a coverage ranking — and they are not the same offers.** A leakage score built from no label beats base rate by 2.5–3.8× at top 25 and 50. But leakage ranks small, concentrated offers first, capping how much fraud it can touch: fifty offers by leakage cover 0.04% of labelled fraud, against 7.1% — 19.7× the ring's own recall ceiling — ranked by raw size, at the cost of reviewing 325,494 accounts rather than a few hundred |  a capacity decision, not a technical one | Held up — a capacity decision, not a technical one |
+| 12 | **A team with almost no confirmed labels is not starting from nothing.** Prune-then-peel already beats base rate at the smallest fraction tested — 1,146 confirmed accounts, 0.5% of the training pool. Held-out AUPRC keeps climbing all the way to 100%; no plateau appears in the range tested | | Held up |
+| 13 | **A method with no fitted model at all beat both learned scorers, and not for the reason I expected.** Fast Belief Propagation — one sparse linear system, a proven convergence condition, priors from confirmed labels only — reaches 0.4615 held-out AUPRC against XGBoost's 0.3796 and GraphSAGE's 0.3819, and pruning on its beliefs alone lifts ring precision to 0.9886 with three times the recall at the same review cost. The hypothesis was that propagation wins when labels are *scarce*; the data says the opposite — it trails both learned scorers from 0.5% through 20% of the pool and only crosses over at 50%. Propagation needs seeds to spread from |  hypothesis wrong, result right | Held up — hypothesis wrong, result right |
 
 Every one of these is written up in full, with the figure that produced it, in
 **[docs/results.md](docs/results.md)**.

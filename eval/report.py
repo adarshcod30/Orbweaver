@@ -2589,9 +2589,14 @@ def _md_inline(s: str) -> str:
 
 
 def _md_section(text: str, heading: str) -> str:
-    """The raw lines under one `## heading` in README.md, up to the next
-    `## ` heading - so the landing page can quote README's own prose
-    instead of keeping a second copy that can drift from it."""
+    """The raw lines under one heading, up to the next heading of any level -
+    so the landing page can quote a document's own prose instead of keeping a
+    second copy that can drift from it.
+
+    Stopping only at `## ` was a bug: a `###` subheading after the section
+    (FAILURES.md's index of every entry) was swallowed into it and rendered
+    as raw markdown on the page.
+    """
     lines = text.splitlines()
     start = None
     for i, line in enumerate(lines):
@@ -2602,7 +2607,7 @@ def _md_section(text: str, heading: str) -> str:
         return ""
     end = len(lines)
     for i in range(start, len(lines)):
-        if lines[i].startswith("## "):
+        if re.match(r"^#{1,6}\s", lines[i]):
             end = i
             break
     return "\n".join(lines[start:end]).strip()
@@ -2878,8 +2883,20 @@ github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
     # same captions docs/results.md uses - one source of captions, not two. ---
     figs_dir = root / "docs" / "figures"
     fig_files = sorted(figs_dir.glob("*.png")) if figs_dir.exists() else []
+    # Each figure carries a real link to the full-size image. With JavaScript
+    # on it becomes a lightbox; with it off the link still opens the PNG, so
+    # the affordance is never a dead control.
+    expand_icon = ('<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" '
+                   'fill="none" stroke="currentColor" stroke-width="1.7" '
+                   'stroke-linecap="round" stroke-linejoin="round">'
+                   '<path d="M9.5 2.5h4v4M13.5 2.5 9 7"/>'
+                   '<path d="M6.5 13.5h-4v-4M2.5 13.5 7 9"/></svg>')
     figures_html = "".join(
-        f'<figure><img src="figures/{f.name}" loading="lazy" '
+        f'<figure><a class="zoom" href="figures/{f.name}" '
+        f'data-caption="{esc(FIGURE_CAPTIONS.get(f.stem, ("", None))[1] or "")}" '
+        f'aria-label="Enlarge: {esc(FIGURE_CAPTIONS.get(f.stem, (f.stem.replace("_", " "), ""))[0])}">'
+        f'{expand_icon}</a>'
+        f'<img src="figures/{f.name}" loading="lazy" '
         f'alt="{esc(FIGURE_CAPTIONS.get(f.stem, (f.stem.replace("_", " "), ""))[0])}">'
         f'<figcaption>{esc(FIGURE_CAPTIONS.get(f.stem, ("", None))[1] or "")}</figcaption>'
         f'</figure>' for f in fig_files)
@@ -2915,15 +2932,45 @@ them. {esc(cell.get('ring_precision'))} ring precision against a base rate of
 <style>{CASE_CSS}
 [hidden]{{display:none!important}}
 .hero{{padding:8px 0 4px}}
-.flow{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0}}
-.fstep{{background:var(--bg);border:1px solid var(--line);border-radius:8px;
-padding:10px 14px;font-size:13.5px;text-align:center;line-height:1.35;
-box-shadow:var(--shadow-sm)}}
-.fstep small{{color:var(--muted);font-size:11.5px;display:block}}
+.flow{{display:grid;grid-template-columns:repeat(4,1fr);gap:34px 30px;
+margin:22px 0 6px;counter-reset:fstep}}
+.fstep{{position:relative;background:var(--surface);border:1px solid var(--line);
+border-radius:10px;padding:16px 14px 14px;font-size:13.5px;text-align:center;
+line-height:1.4;box-shadow:var(--shadow-sm);font-weight:600}}
+.fstep small{{color:var(--muted);font-size:11.5px;display:block;font-weight:400;
+margin-top:3px}}
+.fstep::before{{counter-increment:fstep;content:counter(fstep);position:absolute;
+top:-11px;left:50%;transform:translateX(-50%);background:var(--surface);
+border:1px solid var(--line);color:var(--muted);width:22px;height:22px;
+border-radius:50%;font-size:11px;font-weight:700;line-height:20px}}
+.fstep:not(:nth-child(4n)):not(:last-child)::after{{content:"";position:absolute;
+top:50%;right:-30px;width:30px;height:1px;background:var(--line)}}
 .fstep.accent{{background:var(--accent);color:#fff;border-color:var(--accent)}}
 .fstep.accent small{{color:#ffd9c7}}
-.farrow{{color:var(--muted);font-size:16px}}
-figure{{margin:0 0 24px;padding:0}}
+.fstep.accent::before{{background:var(--accent);border-color:#fff;color:#fff}}
+.fstep.learned{{border-color:var(--accent);background:var(--accent-soft)}}
+.fstep.learned::before{{border-color:var(--accent);color:var(--accent)}}
+@media (max-width:820px){{.flow{{grid-template-columns:repeat(2,1fr)}}
+.fstep:not(:nth-child(4n)):not(:last-child)::after{{display:none}}
+.fstep:not(:nth-child(2n)):not(:last-child)::after{{display:block;right:-30px}}}}
+@media (max-width:480px){{.flow{{grid-template-columns:1fr;gap:26px}}
+.fstep::after{{display:none!important}}}}
+figure{{margin:0 0 24px;padding:0;position:relative}}
+.zoom{{position:absolute;top:10px;right:10px;z-index:2;display:inline-flex;
+align-items:center;justify-content:center;width:30px;height:30px;
+background:var(--surface);border:1px solid var(--line);border-radius:7px;
+color:var(--muted);box-shadow:var(--shadow-sm);text-decoration:none}}
+.zoom:hover{{color:var(--accent);border-color:var(--accent)}}
+.zoom:focus-visible{{outline:none;box-shadow:var(--focus)}}
+#lightbox{{border:0;padding:0;background:transparent;max-width:96vw;max-height:96vh}}
+#lightbox::backdrop{{background:rgba(28,28,28,.72)}}
+#lightbox .lb-in{{background:var(--surface);border-radius:var(--radius);
+padding:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:96vw}}
+#lightbox img{{display:block;max-width:100%;max-height:78vh;width:auto;
+border:1px solid var(--line);border-radius:8px}}
+#lightbox .lb-cap{{color:var(--muted);font-size:13px;margin-top:10px;
+max-width:70ch;line-height:1.5}}
+#lightbox .lb-close{{position:absolute;top:22px;right:22px}}
 figure img{{width:100%;border:1px solid var(--line);border-radius:8px;
 background:var(--surface)}}
 figcaption{{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.5}}
@@ -2986,17 +3033,18 @@ method past PPA, is in
 <section class="panel" id="p-method" role="tabpanel" aria-labelledby="t-method" hidden>
 <div class="card"><h2>How it works</h2>
 {how_intro_html}
-<div class="flow" role="img" aria-label="orders flow into a multi-relation
-graph, into account scoring, into pruning, into peeling, into ring plus
-evidence, into a review policy. Nights one through four replay this whole
-loop, anchored so a case survives the night.">
-<div class="fstep">orders</div><div class="farrow">→</div>
-<div class="fstep">graph<small>rarity × relation weight</small></div><div class="farrow">→</div>
-<div class="fstep">scorer<small>the one learned step</small></div><div class="farrow">→</div>
-<div class="fstep">prune<small>score cut-off τ</small></div><div class="farrow">→</div>
-<div class="fstep">peel<small>densest-subgraph, proved bound</small></div><div class="farrow">→</div>
-<div class="fstep">ring + evidence</div><div class="farrow">→</div>
+<div class="flow" role="img" aria-label="Eight stages in order: orders, then a
+multi-relation graph, then the account scorer, then pruning, then peeling, then
+ring plus evidence, then the review policy, then the analyst case files. Nights
+one to four replay the whole loop, anchored so a case survives the night.">
+<div class="fstep">orders<small>43.9M rows</small></div>
+<div class="fstep">graph<small>rarity x relation weight</small></div>
+<div class="fstep learned">scorer<small>XGBoost, the one learned step</small></div>
+<div class="fstep">prune<small>score cut-off tau</small></div>
+<div class="fstep">peel<small>densest subgraph, proved bound</small></div>
+<div class="fstep">ring + evidence<small>shares, rarity, cost</small></div>
 <div class="fstep accent">policy<small>review / hold / ignore</small></div>
+<div class="fstep">case files<small>what an analyst opens</small></div>
 </div>
 <p class="note">Replayed one night at a time for the nightly numbers: rings
 are anchored around fixed accounts so a case found tonight is recognisably
@@ -3077,6 +3125,11 @@ make console      # http://127.0.0.1:8000</code></pre>
 </div>
 </section>
 
+<dialog id="lightbox" aria-label="Figure, enlarged">
+<div class="lb-in"><img alt=""><p class="lb-cap"></p></div>
+<button class="btn lb-close" type="button">Close</button>
+</dialog>
+
 <p class="footer">MIT-licensed. Detection only —
 <a href="{blob}/ETHICS.md">ETHICS.md</a> sets the boundary in six lines.
 Built for the Razorpay AI Buildathon, Track 02 ·
@@ -3131,6 +3184,31 @@ Built for the Razorpay AI Buildathon, Track 02 ·
   }}
   if (!fromHash()) select(0, false);
   window.addEventListener('hashchange', fromHash);
+}})();
+(function(){{
+  var dlg = document.getElementById('lightbox');
+  if (!dlg || !dlg.showModal) return;          // no <dialog>: links still open the PNG
+  var img = dlg.querySelector('img');
+  var cap = dlg.querySelector('.lb-cap');
+  var last = null;
+  document.addEventListener('click', function(e){{
+    var a = e.target.closest && e.target.closest('a.zoom');
+    if (a) {{
+      e.preventDefault();
+      last = a;
+      img.src = a.getAttribute('href');
+      img.alt = (a.getAttribute('aria-label') || '').replace(/^Enlarge:\\s*/, '');
+      cap.textContent = a.getAttribute('data-caption') || '';
+      dlg.showModal();
+      return;
+    }}
+    if (e.target.closest && e.target.closest('.lb-close')) {{ dlg.close(); return; }}
+    if (e.target === dlg) dlg.close();          // click the backdrop
+  }});
+  dlg.addEventListener('close', function(){{
+    img.removeAttribute('src');
+    if (last) last.focus();
+  }});
 }})();
 (function(){{
   var dataEl = document.getElementById('chart-data');

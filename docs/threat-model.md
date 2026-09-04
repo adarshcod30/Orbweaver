@@ -14,14 +14,14 @@ member placed in a ring.
 
 | Abuse | Covered? |
 |---|---|
-| **New-user offer farming** — many accounts, one operator, first-order discounts | ✅ directly — this is what PPA labels |
-| **Referral rings** — A "refers" B, C, D…, all controlled by A | ✅ same graph signature |
-| **Cashback farming** — orders timed and shaped to milk cashback rules | ✅ labelled in PPA |
-| **Stocking up / reseller rings** — discounted stock bought across accounts to resell | ✅ labelled in PPA |
-| Seller-side collusion — a merchant placing fake orders from controlled accounts | ⚪ same algorithm, different labels — **not evaluated, so not claimed** |
-| Delivery-partner collusion — riders and fake customers farming incentives | ⚪ same algorithm, not evaluated |
-| Refund rings — coordinated "item not received" claims | ⚪ same algorithm, not evaluated |
-| Money-mule networks — proceeds hopping between accounts | ⚪ same algorithm, not evaluated |
+| **New-user offer farming** — many accounts, one operator, first-order discounts | **Yes** — directly, this is what PPA labels |
+| **Referral rings** — A "refers" B, C, D…, all controlled by A | **Yes** — same graph signature |
+| **Cashback farming** — orders timed and shaped to milk cashback rules | **Yes** — labelled in PPA |
+| **Stocking up / reseller rings** — discounted stock bought across accounts to resell | **Yes** — labelled in PPA |
+| Seller-side collusion — a merchant placing fake orders from controlled accounts | Same algorithm, different labels — **not evaluated, so not claimed** |
+| Delivery-partner collusion — riders and fake customers farming incentives | Same algorithm — not evaluated, so not claimed |
+| Refund rings — coordinated "item not received" claims | Same algorithm — not evaluated, so not claimed |
+| Money-mule networks — proceeds hopping between accounts | Same algorithm — not evaluated, so not claimed |
 
 ## What it does not catch
 
@@ -36,7 +36,7 @@ member placed in a ring.
 
 ```mermaid
 flowchart LR
-    A["① Fragment<br/>the ring"] --> B["② Dilute with<br/>camouflage"] --> C["③ Slow<br/>down"] --> D["④ Genuinely separate<br/>identities"]
+    A["1 · Fragment<br/>the ring"] --> B["2 · Dilute with<br/>camouflage"] --> C["3 · Slow<br/>down"] --> D["4 · Genuinely separate<br/>identities"]
     A -.-> A1["cost: LOW<br/><b>this one works</b>"]
     B -.-> B1["cost: low<br/>but ineffective"]
     C -.-> C1["cost: real"]
@@ -47,7 +47,7 @@ flowchart LR
 
 | # | Evasion | Cost | What happens |
 |---|---|---|---|
-| 1 | **Fragment the ring** — split fifty accounts into ten cells of five sharing nothing across cells | **Low** | ⚠️ **The attack that works.** Density falls below detectability. Behavioural edges (accounts that behave alike still do so after every shared entity is cut) recover **+0.0237** precision at cells of three — but **nothing** at cells of twenty, and they don't restore the curve |
+| 1 | **Fragment the ring** — split fifty accounts into ten cells of five sharing nothing across cells | **Low** | **The attack that works.** Density falls below detectability. Behavioural edges (accounts that behave alike still do so after every shared entity is cut) recover **+0.0237** precision at cells of three — but **nothing** at cells of twenty, and they don't restore the curve |
 | 2 | **Dilute with camouflage** — add edges to ordinary accounts through common entities | Low | Ineffective. Rarity weighting makes an entity shared by 3M accounts worth almost nothing, so density barely moves. Camouflage through *rare* entities would work — but that means acquiring genuinely distinct addresses and instruments, which is exactly the cost we want to impose |
 | 3 | **Slow down** — spread the same behaviour over a longer window | Real | Effective, and it directly reduces the attacker's return per unit time |
 | 4 | **Genuinely separate identities** — different address, device, instrument, promotion per account | Highest | Defeats the method completely. It also removes most of the economic advantage of running a ring, which is the point: make the *cheap* version uneconomic, not make fraud impossible |

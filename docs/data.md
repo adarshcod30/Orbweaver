@@ -12,7 +12,7 @@ evaluation design.
 | **B** | The release is **57.4% of the users** the paper reports | Every number here is against what is downloadable, never the paper's larger set |
 | **C** | **Three of eight relations are empty** in the order files — including one worth 38.41% of the authors' edges | Two graph views are reported: what I can rebuild, and what they shipped |
 | **D** | **CRLF makes the last column lie** — would have fabricated ~14 billion phantom edges | Caught by a test that now pins it |
-| **E** | **The two order files are separately re-indexed from zero** | ⚠️ The single most consequential finding — see [below](#finding-e--the-two-order-files-do-not-share-an-id-space) |
+| **E** | **The two order files are separately re-indexed from zero** | **The single most consequential finding** — see [below](#finding-e--the-two-order-files-do-not-share-an-id-space) |
 
 Download: `make download` fetches all 4.00 GB from
 [OSF](https://osf.io/rasje/?view_only=671050154acf4c0fa6b86a9337e74c2c) and
