@@ -13,6 +13,7 @@ the most deliberate design decision in this project.
 | Evidence | Shared entities, coverage, rarity, day concentration, counted from the orders | No — counting |
 | Rupees at stake and false-positive cost | Arithmetic over stated assumptions | No |
 | The decision to act | A human reads the case file | No |
+| Label propagation (reported beside the scorer, not on the critical path) | Fast Belief Propagation: one sparse linear system, convergence condition checked in code | No — deterministic, provably convergent |
 
 The one thing in that table worth pausing on is `alpha_r`. It is fitted — from
 how much more often each relation joins two known fraudsters than chance
@@ -56,6 +57,20 @@ than the node features do.
 grows the model's opinion dominates. I sweep λ and report the whole curve
 instead of tuning to a single flattering value, so a reader can see exactly
 how much the learned component is contributing.
+
+**A second provable method makes the same case a second way.** Fast Belief
+Propagation - one sparse linear system, a stated convergence condition
+checked in code before every solve, no training step at all - was added
+later to test whether label propagation beats a feature model when confirmed
+fraud labels are scarce. On this graph it does more than that: at full label
+availability it beats both XGBoost and GraphSAGE on held-out AUPRC, and
+pruning on its output alone reaches 0.9886 ring precision against the
+learned scorer's 0.7292 at the same review cost (`docs/results.md`,
+"Spreading what few labels there are"). It is not on the critical path
+either - XGBoost stays the default - but it is more evidence for the same
+argument this document already makes: on a graph with real structure, a
+method that can prove what it is doing is not a compromise against a learned
+one.
 
 ## Why XGBoost and not a graph neural network
 

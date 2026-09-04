@@ -11,9 +11,12 @@ that way deliberately.
   released for research.
 
 - **Public research data only.** PPA is a public dataset released with a
-  peer-reviewed paper, with anonymised identifiers throughout. GADBench, if
-  used, is likewise public. No real merchant, customer, or payment system is
-  touched anywhere in this repository, and there are no credentials in it.
+  peer-reviewed paper, with anonymised identifiers throughout. GADBench and
+  IEEE-CIS, where used, are likewise public research releases with anonymised
+  identifiers — the payment-processor comparison names this plainly, and the
+  account in it is a card fingerprint, not a person. No real merchant,
+  customer, or payment system is touched anywhere in this repository, and
+  there are no credentials in it.
 
 - **Outputs are case files, not verdicts.** A ring is a recommendation for a
   human to review, with the evidence attached so it can be disagreed with. I

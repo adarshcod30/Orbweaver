@@ -55,7 +55,7 @@ In roughly increasing order of cost to the attacker:
    after every shared entity between them has been cut, and behavioural edges
    recover +0.0237 precision at cells of three. They recover nothing at cells
    of twenty, and they do not restore the curve, so fragmentation remains the
-   attack that works."
+   attack that works.
 2. **Dilute with camouflage.** Add edges to ordinary accounts through common
    entities so the group looks less cohesive. Rarity weighting is the direct
    answer: a shared entity that 3 million accounts have is worth almost
