@@ -713,34 +713,50 @@ The separator is the **account score**, not the structure — the touched cluste
 
 ## Figures
 
-![headline_precision_vs_cost](figures/headline_precision_vs_cost.png)
+![Ring precision against false-positive cost across score cut-offs](figures/headline_precision_vs_cost.png)
+*Each point is one score cut-off (tau); the headline operating point is marked. Precision rises steeply then flattens as the cut-off tightens, while cost falls - the marked point is where that trade-off was judged worth making, not the only defensible choice.*
 
-![ring_precision_grid](figures/ring_precision_grid.png)
+![Ring precision across the full cut-off (tau) by structure-weight (lambda) grid](figures/ring_precision_grid.png)
+*Precision depends far more on the score cut-off than on how much the peeling objective weighs the model's opinion - most of the grid's variation runs along the tau axis, not the lambda axis.*
 
-![relation_lift](figures/relation_lift.png)
+![Fraud-fraud lift by relation, against each relation's share of all edges](figures/relation_lift.png)
+*The relation carrying the most edges (promotion) has the weakest evidential lift; the rarest relations are the strongest evidence per edge. Edge count and evidential value are not the same thing.*
 
-![ieee_relation_lift](figures/ieee_relation_lift.png)
+![Fraud-fraud lift by relation on the IEEE-CIS payment-processor graph](figures/ieee_relation_lift.png)
+*The same lift-versus-share pattern as PPA, on a different dataset. address_distance is the same billing address and distance band; device the same device; email_recipient the same recipient e-mail domain; browser the same browser build; email_payer the same payer e-mail domain, the one relation no better than chance.*
 
-![queue_by_ranking](figures/queue_by_ranking.png)
+![Precision at depth for three ways of ranking rings](figures/queue_by_ranking.png)
+*Ranking rings by their members' mean account score beats both a trained ring-confidence model and raw density, at every depth tested - the simplest ranking wins here, not the most sophisticated one.*
 
-![ring_calibration](figures/ring_calibration.png)
+![Predicted versus realised precision, by confidence decile](figures/ring_calibration.png)
+*Points near the diagonal mean the ring-confidence model's stated probability is trustworthy at that decile; points off it show where the model is over- or under-confident.*
 
-![time_to_detection](figures/time_to_detection.png)
+![Ring precision and days-to-detection, replaying the window night by night](figures/time_to_detection.png)
+*One night of data lands at the base rate; it takes four nights of replay to reach the precision this project reports as its headline number, which is the real cost of not anchoring cases across nights.*
 
-![merchant_vs_platform](figures/merchant_vs_platform.png)
+![Ring precision and node AUPRC with and without the one relation only a platform can see](figures/merchant_vs_platform.png)
+*Removing the cross-business relation costs both ring precision and account-scoring AUPRC - real, measured evidence for what an aggregator's view is worth, not an assumption.*
 
-![ring_context](figures/ring_context.png)
+![Held-out AUPRC with and without last window's ring membership as a feature](figures/ring_context.png)
+*The lift is small (+0.0011) because the feature is only ever non-zero for 0.15% of held-out accounts - most accounts were in no ring last window, so there is nothing for the feature to carry forward for them.*
 
-![ring_persistence](figures/ring_persistence.png)
+![Share of final-night rings with a predecessor the night before, anchored against global extraction](figures/ring_persistence.png)
+*Anchoring the extraction around fixed accounts is what makes a case trackable from one night to the next - global peeling recomposes the whole graph every night and loses almost every case in the process.*
 
-![policy_frontier](figures/policy_frontier.png)
+![What each review policy stops against what it costs, by reviewer budget; and one analyst's cumulative catch across four nights](figures/policy_frontier.png)
+*Left: the capacity-aware policy holds fraud stopped roughly flat while cutting legitimate harm as the budget grows - more analyst time buys fewer wrongly-harmed customers, not more fraud caught. Right: an analyst working two hours a night keeps catching new fraud value every night of the replay, not just the first.*
 
-![lockstep](figures/lockstep.png)
+![Ring precision with and without burst-weighted edges, by relation and by dataset](figures/lockstep.png)
+*Burst-weighting costs precision on PPA with no clean per-relation story, and leaves the IEEE-CIS apartment-cluster weakness exactly unchanged - a negative result, shown rather than omitted.*
 
-![offer_leakage](figures/offer_leakage.png)
+![Precision at k and cumulative fraud coverage for two offer rankings](figures/offer_leakage.png)
+*Ranking offers by leakage is precise but narrow - it covers very little of all labelled fraud, because it puts small offers first. Ranking by raw size covers far more at a much larger review cost. Neither ranking dominates; which to use is a capacity decision.*
 
-![label_budget](figures/label_budget.png)
+![Held-out AUPRC and ring precision against the number of confirmed labels used](figures/label_budget.png)
+*Even the smallest label budget tested (1,146 accounts) already beats the base rate, and AUPRC keeps climbing all the way to full label availability with no plateau visible in the range tested.*
 
-![scorer_by_label_budget](figures/scorer_by_label_budget.png)
+![Held-out AUPRC against label budget for three scorers: XGBoost, Fast Belief Propagation, GraphSAGE](figures/scorer_by_label_budget.png)
+*Belief propagation trails both learned scorers until roughly half the training pool is labelled, then overtakes both - the crossover is real and the hypothesis going in predicted the opposite order.*
 
-![adversarial](figures/adversarial.png)
+![Ring precision as a ring is fragmented into smaller cells, with and without behavioural edges](figures/adversarial.png)
+*Precision falls sharply as cells shrink; behavioural edges recover some of it at cells of three and recover nothing at cells of twenty - fragmentation remains the evasion that works.*

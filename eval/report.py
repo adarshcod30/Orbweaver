@@ -20,8 +20,107 @@ from orbweaver.config import load_config
 
 INK = "#1c1c1c"
 ACCENT = "#c2410c"
+ACCENT2 = "#0369a1"  # a second series colour, chosen with ACCENT for orange/blue
+                    # contrast that survives deuteranopia and protanopia; every
+                    # multi-series chart also varies marker shape, so colour is
+                    # never the only channel encoding which series is which.
 MUTED = "#9a9a9a"
 GRID = "#e6e6e6"
+
+# alt text and a one-line caption for every figure in docs/results.md - what
+# it shows, and what to conclude from it. A reader who cannot see the image
+# still gets the alt text; a reader who can see it still needs to be told
+# what the picture is arguing, because a chart with no caption asks the
+# reader to reverse-engineer the point.
+FIGURE_CAPTIONS: dict[str, tuple[str, str]] = {
+    "headline_precision_vs_cost": (
+        "Ring precision against false-positive cost across score cut-offs",
+        "Each point is one score cut-off (tau); the headline operating point "
+        "is marked. Precision rises steeply then flattens as the cut-off "
+        "tightens, while cost falls - the marked point is where that "
+        "trade-off was judged worth making, not the only defensible choice."),
+    "ring_precision_grid": (
+        "Ring precision across the full cut-off (tau) by structure-weight (lambda) grid",
+        "Precision depends far more on the score cut-off than on how much the "
+        "peeling objective weighs the model's opinion - most of the grid's "
+        "variation runs along the tau axis, not the lambda axis."),
+    "relation_lift": (
+        "Fraud-fraud lift by relation, against each relation's share of all edges",
+        "The relation carrying the most edges (promotion) has the weakest "
+        "evidential lift; the rarest relations are the strongest evidence "
+        "per edge. Edge count and evidential value are not the same thing."),
+    "ieee_relation_lift": (
+        "Fraud-fraud lift by relation on the IEEE-CIS payment-processor graph",
+        "The same lift-versus-share pattern as PPA, on a different dataset. "
+        "address_distance is the same billing address and distance band; "
+        "device the same device; email_recipient the same recipient "
+        "e-mail domain; browser the same browser build; email_payer the "
+        "same payer e-mail domain, the one relation no better than chance."),
+    "queue_by_ranking": (
+        "Precision at depth for three ways of ranking rings",
+        "Ranking rings by their members' mean account score beats both a "
+        "trained ring-confidence model and raw density, at every depth "
+        "tested - the simplest ranking wins here, not the most sophisticated one."),
+    "ring_calibration": (
+        "Predicted versus realised precision, by confidence decile",
+        "Points near the diagonal mean the ring-confidence model's stated "
+        "probability is trustworthy at that decile; points off it show "
+        "where the model is over- or under-confident."),
+    "time_to_detection": (
+        "Ring precision and days-to-detection, replaying the window night by night",
+        "One night of data lands at the base rate; it takes four nights of "
+        "replay to reach the precision this project reports as its headline "
+        "number, which is the real cost of not anchoring cases across nights."),
+    "merchant_vs_platform": (
+        "Ring precision and node AUPRC with and without the one relation only a platform can see",
+        "Removing the cross-business relation costs both ring precision and "
+        "account-scoring AUPRC - real, measured evidence for what an "
+        "aggregator's view is worth, not an assumption."),
+    "ring_context": (
+        "Held-out AUPRC with and without last window's ring membership as a feature",
+        "The lift is small (+0.0011) because the feature is only ever "
+        "non-zero for 0.15% of held-out accounts - most accounts were in no "
+        "ring last window, so there is nothing for the feature to carry "
+        "forward for them."),
+    "ring_persistence": (
+        "Share of final-night rings with a predecessor the night before, anchored against global extraction",
+        "Anchoring the extraction around fixed accounts is what makes a case "
+        "trackable from one night to the next - global peeling recomposes "
+        "the whole graph every night and loses almost every case in the process."),
+    "policy_frontier": (
+        "What each review policy stops against what it costs, by reviewer budget; and one analyst's cumulative catch across four nights",
+        "Left: the capacity-aware policy holds fraud stopped roughly flat "
+        "while cutting legitimate harm as the budget grows - more analyst "
+        "time buys fewer wrongly-harmed customers, not more fraud caught. "
+        "Right: an analyst working two hours a night keeps catching new "
+        "fraud value every night of the replay, not just the first."),
+    "lockstep": (
+        "Ring precision with and without burst-weighted edges, by relation and by dataset",
+        "Burst-weighting costs precision on PPA with no clean per-relation "
+        "story, and leaves the IEEE-CIS apartment-cluster weakness exactly "
+        "unchanged - a negative result, shown rather than omitted."),
+    "offer_leakage": (
+        "Precision at k and cumulative fraud coverage for two offer rankings",
+        "Ranking offers by leakage is precise but narrow - it covers very "
+        "little of all labelled fraud, because it puts small offers first. "
+        "Ranking by raw size covers far more at a much larger review cost. "
+        "Neither ranking dominates; which to use is a capacity decision."),
+    "label_budget": (
+        "Held-out AUPRC and ring precision against the number of confirmed labels used",
+        "Even the smallest label budget tested (1,146 accounts) already "
+        "beats the base rate, and AUPRC keeps climbing all the way to full "
+        "label availability with no plateau visible in the range tested."),
+    "scorer_by_label_budget": (
+        "Held-out AUPRC against label budget for three scorers: XGBoost, Fast Belief Propagation, GraphSAGE",
+        "Belief propagation trails both learned scorers until roughly half "
+        "the training pool is labelled, then overtakes both - the crossover "
+        "is real and the hypothesis going in predicted the opposite order."),
+    "adversarial": (
+        "Ring precision as a ring is fragmented into smaller cells, with and without behavioural edges",
+        "Precision falls sharply as cells shrink; behavioural edges recover "
+        "some of it at cells of three and recover nothing at cells of "
+        "twenty - fragmentation remains the evasion that works."),
+}
 
 
 def _style(ax) -> None:
@@ -46,13 +145,13 @@ def headline_chart(ring: dict, out: Path) -> Path | None:
     if not rows:
         return None
 
-    fig, ax = plt.subplots(figsize=(7.2, 4.6), dpi=160)
+    fig, ax = plt.subplots(figsize=(7.2, 4.6), dpi=160, constrained_layout=True)
     _style(ax)
     base = ring["base_rate_among_labelled"]
 
     taus = sorted({r["tau"] for r in rows})
     markers = {0.0: "o", 0.3: "s", 0.5: "^"}
-    colors = {0.0: MUTED, 0.3: ACCENT, 0.5: "#0369a1"}
+    colors = {0.0: MUTED, 0.3: ACCENT, 0.5: ACCENT2}
     for tau in taus:
         pts = sorted([r for r in rows if r["tau"] == tau], key=lambda r: r["normal_members"])
         ax.plot([r["normal_members"] for r in pts], [r["fraud_members"] for r in pts],
@@ -63,15 +162,19 @@ def headline_chart(ring: dict, out: Path) -> Path | None:
     lim = max(max(r["normal_members"] for r in rows),
               max(r["fraud_members"] for r in rows)) * 1.05
     ax.plot([0, lim], [0, lim * base / (1 - base)], "--", color=MUTED, linewidth=1.0)
-    ax.annotate("what random selection\nwould give you", xy=(lim * 0.62, lim * 0.62 * base / (1 - base)),
-                fontsize=8, color=MUTED, ha="left")
+    # Offset well clear of the dashed line itself - text sitting directly on
+    # the line it is labelling made both illegible.
+    label_x = lim * 0.58
+    ax.annotate("what random selection\nwould give you",
+               xy=(label_x, label_x * base / (1 - base)),
+               xytext=(10, -22), textcoords="offset points",
+               fontsize=8, color=MUTED, ha="left")
 
     ax.set_xlabel("real customers wrongly placed in a ring", color=INK, fontsize=10)
     ax.set_ylabel("fraudsters caught", color=INK, fontsize=10)
     ax.set_title("What each operating point costs in real customers",
                  color=INK, fontsize=12, loc="left", pad=12)
     ax.legend(frameon=False, fontsize=9)
-    fig.tight_layout()
     dest = out / "headline_precision_vs_cost.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -86,18 +189,20 @@ def precision_grid_chart(ring: dict, out: Path) -> Path | None:
     taus = sorted({r["tau"] for r in rows})
     lams = sorted({r["lambda"] for r in rows})
 
-    fig, ax = plt.subplots(figsize=(7.2, 4.0), dpi=160)
+    fig, ax = plt.subplots(figsize=(7.2, 4.0), dpi=160, constrained_layout=True)
     _style(ax)
     width = 0.8 / max(len(taus), 1)
     x = np.arange(len(lams))
+    highest = base
     for i, tau in enumerate(taus):
         vals = []
         for lam in lams:
             m = [r for r in rows if r["tau"] == tau and r["lambda"] == lam]
             vals.append(m[0]["ring_precision"] if m else 0.0)
+        highest = max(highest, max(vals))
         ax.bar(x + i * width, vals, width * 0.9,
                label=f"τ = {tau}" if tau else "no cut-off",
-               color=[MUTED, ACCENT, "#0369a1"][i % 3])
+               color=[MUTED, ACCENT, ACCENT2][i % 3])
     ax.axhline(base, color=INK, linestyle="--", linewidth=1.0)
     ax.annotate(f"base rate {base:.3f}", xy=(len(lams) - 0.5, base),
                 xytext=(0, 4), textcoords="offset points",
@@ -106,8 +211,12 @@ def precision_grid_chart(ring: dict, out: Path) -> Path | None:
     ax.set_xticklabels([f"λ = {l}" for l in lams])
     ax.set_ylabel("share of a ring's labelled members\nthat are fraud", fontsize=10, color=INK)
     ax.set_title("Ring precision across the sweep", color=INK, fontsize=12, loc="left", pad=12)
-    ax.legend(frameon=False, fontsize=9)
-    fig.tight_layout()
+    # Headroom above the tallest bar, and the legend moved above the axes
+    # entirely - it used to auto-place in the upper right and sit on top of
+    # the tallest bars there.
+    ax.set_ylim(0, highest * 1.18)
+    ax.legend(frameon=False, fontsize=9, loc="upper center",
+             bbox_to_anchor=(0.5, 1.16), ncol=3, columnspacing=1.2)
     dest = out / "ring_precision_grid.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -119,16 +228,18 @@ def relation_lift_chart(weights: dict, out: Path) -> Path | None:
     lifts = [weights["relations"][r]["lift"] for r in rels]
     labels = {"r1": "location", "r3": "delivery", "r6": "promotion",
               "r7": "coupon", "r8": "stimulation"}
-    fig, ax = plt.subplots(figsize=(6.4, 3.6), dpi=160)
+    fig, ax = plt.subplots(figsize=(6.4, 3.6), dpi=160, constrained_layout=True)
     _style(ax)
     order = np.argsort(lifts)[::-1]
     names = [f"{rels[i]}\n{labels.get(rels[i], '')}" for i in order]
     ax.bar(names, [lifts[i] for i in order], color=ACCENT, width=0.6)
     ax.axhline(1.0, color=INK, linestyle="--", linewidth=1.0)
+    ax.annotate("chance", xy=(len(order) - 0.5, 1.0),
+                xytext=(0, 6), textcoords="offset points",
+                fontsize=8, color=INK, ha="right")
     ax.set_ylabel("fraud–fraud edges vs chance", fontsize=10, color=INK)
     ax.set_title("Not every shared thing is equally incriminating",
                  color=INK, fontsize=12, loc="left", pad=12)
-    fig.tight_layout()
     dest = out / "relation_lift.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -147,7 +258,7 @@ def adversarial_chart(frag: dict, adv: dict | None, out: Path,
     intact = r["intact"]["ring_precision"]
 
     n = 2 if adv else 1
-    fig, axes = plt.subplots(1, n, figsize=(5.4 * n, 4.0), dpi=160)
+    fig, axes = plt.subplots(1, n, figsize=(5.4 * n, 4.0), dpi=160, constrained_layout=True)
     axes = np.atleast_1d(axes)
 
     ax = axes[0]
@@ -190,7 +301,6 @@ def adversarial_chart(frag: dict, adv: dict | None, out: Path,
         ax.set_title("Multi-round duplication", color=INK, fontsize=12,
                      loc="left", pad=10)
 
-    fig.tight_layout()
     dest = out / "adversarial.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -205,21 +315,20 @@ def ieee_relation_chart(ie: dict, out: Path) -> Path | None:
     if not rows:
         return None
     rows.sort(key=lambda r: -r[1])
-    fig, ax = plt.subplots(figsize=(7.0, 3.8), dpi=160)
+    fig, ax = plt.subplots(figsize=(7.2, 4.2), dpi=160, constrained_layout=True)
     _style(ax)
-    names = [f"{r[0]}\n{r[2]}" for r in rows]
+    names = [r[0] for r in rows]
     vals = [r[1] for r in rows]
     colours = [ACCENT if v >= 1.0 else MUTED for v in vals]
     ax.bar(names, vals, color=colours, width=0.6)
     ax.axhline(1.0, color=INK, linestyle="--", linewidth=1.0)
     ax.annotate("no better than chance", xy=(len(rows) - 0.5, 1.0),
-                xytext=(0, 4), textcoords="offset points",
+                xytext=(0, 6), textcoords="offset points",
                 fontsize=8, color=INK, ha="right")
     ax.set_ylabel("fraud–fraud edges vs chance", fontsize=10, color=INK)
     ax.set_title("What a processor's relations are worth",
                  color=INK, fontsize=12, loc="left", pad=12)
-    ax.tick_params(axis="x", labelsize=8)
-    fig.tight_layout()
+    ax.tick_params(axis="x", labelsize=9)
     dest = out / "ieee_relation_lift.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -234,7 +343,7 @@ def ring_scorer_charts(rs: dict, out: Path) -> list[Path]:
 
     depths = sorted({int(k) for r in rs["rankings"].values()
                      for k in r["all_labelled"]})
-    fig, ax = plt.subplots(figsize=(7.2, 4.2), dpi=160)
+    fig, ax = plt.subplots(figsize=(7.2, 4.2), dpi=160, constrained_layout=True)
     _style(ax)
     styles = {"density": (MUTED, "o", "density (what the queue does today)"),
               "mean_member_score": ("#0369a1", "s", "mean member score (baseline)"),
@@ -250,7 +359,6 @@ def ring_scorer_charts(rs: dict, out: Path) -> list[Path]:
     ax.set_title("Does a learned confidence order the queue better?",
                  color=INK, fontsize=12, loc="left", pad=12)
     ax.legend(frameon=False, fontsize=9)
-    fig.tight_layout()
     d1 = out / "queue_by_ranking.png"
     fig.savefig(d1, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -258,7 +366,7 @@ def ring_scorer_charts(rs: dict, out: Path) -> list[Path]:
 
     cal = rs.get("calibration") or []
     if cal:
-        fig, ax = plt.subplots(figsize=(5.2, 4.6), dpi=160)
+        fig, ax = plt.subplots(figsize=(5.2, 4.6), dpi=160, constrained_layout=True)
         _style(ax)
         px = [c["predicted"] for c in cal]
         py = [c["realised"] for c in cal]
@@ -271,7 +379,6 @@ def ring_scorer_charts(rs: dict, out: Path) -> list[Path]:
         ax.set_xlim(0, 1); ax.set_ylim(0, 1)
         ax.set_title("Does the confidence mean what it says?",
                      color=INK, fontsize=12, loc="left", pad=12)
-        fig.tight_layout()
         d2 = out / "ring_calibration.png"
         fig.savefig(d2, bbox_inches="tight", facecolor="white")
         plt.close(fig)
@@ -285,7 +392,7 @@ def replay_chart(rep: dict, out: Path) -> Path | None:
     snaps = rep.get("snapshots") or []
     if not snaps:
         return None
-    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160)
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160, constrained_layout=True)
 
     ax = axes[0]
     _style(ax)
@@ -325,7 +432,6 @@ def replay_chart(rep: dict, out: Path) -> Path | None:
         ax.set_title("How much of each ring was already visible",
                      color=INK, fontsize=12, loc="left", pad=10)
 
-    fig.tight_layout()
     dest = out / "time_to_detection.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -347,7 +453,7 @@ def merchant_vs_platform_chart(mv: dict, out: Path) -> Path | None:
         return None
     rows.sort()
 
-    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160)
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160, constrained_layout=True)
 
     ax = axes[0]
     _style(ax)
@@ -365,7 +471,8 @@ def merchant_vs_platform_chart(mv: dict, out: Path) -> Path | None:
              min(v["platform_precision"] for _, v in rows))
     ax.set_ylim(max(0.0, lo - 0.06), 1.0)
     ax.set_title("At equal review capacity", color=INK, fontsize=12, loc="left", pad=10)
-    ax.legend(frameon=False, fontsize=9)
+    ax.legend(frameon=False, fontsize=9, loc="upper center",
+              bbox_to_anchor=(0.5, -0.16), ncol=2)
 
     ax = axes[1]
     _style(ax)
@@ -380,7 +487,6 @@ def merchant_vs_platform_chart(mv: dict, out: Path) -> Path | None:
         ax.annotate(f"{v:,}", xy=(i, v), xytext=(0, 4), textcoords="offset points",
                     ha="center", fontsize=9, color=INK)
 
-    fig.tight_layout()
     dest = out / "merchant_vs_platform.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -418,7 +524,7 @@ def ring_context_chart(rc: dict, out: Path) -> Path | None:
     deltas = [best[f] for f in feats]
     y = np.arange(len(feats))
 
-    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.6), dpi=160)
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.6), dpi=160, constrained_layout=True)
 
     ax = axes[0]
     _style(ax)
@@ -457,7 +563,6 @@ def ring_context_chart(rc: dict, out: Path) -> Path | None:
         fig.text(0.5, -0.04, f"against {base} for the score on its own",
                  ha="center", fontsize=9, color=MUTED)
 
-    fig.tight_layout()
     dest = out / "ring_context.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -477,7 +582,7 @@ def ring_persistence_chart(an: dict, out: Path) -> Path | None:
     g = an.get("global_peeling_from_replay") or {}
     final = an.get("final_rings") or []
 
-    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160)
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.0), dpi=160, constrained_layout=True)
 
     ax = axes[0]
     _style(ax)
@@ -525,7 +630,6 @@ def ring_persistence_chart(an: dict, out: Path) -> Path | None:
                         ha="center", fontsize=8, color=INK)
     ax.set_ylim(0, max(counts + [1]) * 1.45)
 
-    fig.tight_layout()
     dest = out / "ring_persistence.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -679,26 +783,43 @@ def policy_frontier_chart(po: dict, out: Path) -> Path | None:
         "auto-hold everything": (MUTED, "^", "auto-hold everything"),
     }
 
-    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.2), dpi=160)
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.6), dpi=160, constrained_layout=True)
 
     ax = axes[0]
     _style(ax)
     for name, (colour, marker, label) in styles.items():
         xs = [budgets[b][name]["legitimate_value_harmed_inr"] for b in order]
         ys = [budgets[b][name]["fraud_value_stopped_inr"] for b in order]
-        ax.plot(xs, ys, marker=marker, color=colour, linewidth=1.4, markersize=5, label=label)
+        ax.plot(xs, ys, marker=marker, color=colour, linewidth=1.4, markersize=6, label=label)
     nothing = budgets[order[0]]["do nothing"]
     ax.scatter([nothing["legitimate_value_harmed_inr"]], [nothing["fraud_value_stopped_inr"]],
-               color=MUTED, marker="x", s=60, label="do nothing")
-    for b in order:
+               color=MUTED, marker="x", s=70, linewidth=2, label="do nothing", zorder=5)
+
+    # Label the capacity-aware points by their rank in x, not by budget-list
+    # order - two budgets can be close in list order but far apart on the
+    # axis (or the reverse), and alternating by list order left two visually
+    # adjacent points both labelled above, colliding anyway. Alternating by
+    # x-rank guarantees neighbours on the page get opposite offsets. The
+    # density-order series is not labelled per point: two of its four points
+    # sit at nearly the same height (0 and 200 rupees, indistinguishable at
+    # this scale) and all four share x=0, so individual labels would collide
+    # regardless of offset - the qualitative point ("stopped little, harmed
+    # nobody") is carried by the series legend and the text instead.
+    ca_by_x = sorted(order, key=lambda b: budgets[b]["capacity-aware"]["legitimate_value_harmed_inr"])
+    for rank, b in enumerate(ca_by_x):
+        dy = 12 if rank % 2 == 0 else -17
         o = budgets[b]["capacity-aware"]
-        ax.annotate(f"{b}m", xy=(o["legitimate_value_harmed_inr"], o["fraud_value_stopped_inr"]),
-                    xytext=(4, -9), textcoords="offset points", fontsize=8, color=ACCENT)
+        ax.annotate(f"{b} min", xy=(o["legitimate_value_harmed_inr"], o["fraud_value_stopped_inr"]),
+                    xytext=(0, dy), textcoords="offset points", fontsize=8, color=ACCENT,
+                    ha="center")
+
     ax.set_xlabel("legitimate value harmed (₹, assumed)", fontsize=10, color=INK)
     ax.set_ylabel("fraud value stopped (₹, assumed)", fontsize=10, color=INK)
     ax.set_title("What each policy stops, and what it costs", color=INK, fontsize=12,
                  loc="left", pad=10)
-    ax.legend(frameon=False, fontsize=8, loc="lower right")
+    ax.margins(x=0.28, y=0.12)
+    ax.legend(frameon=False, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.16),
+             ncol=4, columnspacing=1.2)
 
     ax = axes[1]
     _style(ax)
@@ -708,16 +829,16 @@ def policy_frontier_chart(po: dict, out: Path) -> Path | None:
         ax.bar(x, [r["fraud_value_stopped_inr"] for r in rows], color=ACCENT, width=0.55,
                label="stopped that night")
         ax.plot(x, [r["cumulative_fraud_value_stopped_inr"] for r in rows], color=INK,
-                marker="o", linewidth=1.4, markersize=5, label="running total")
+                marker="o", linewidth=1.4, markersize=6, label="running total")
         ax.set_xticks(x)
         ax.set_xticklabels([f"night {n}" for n in x])
         ax.set_ylabel("fraud value stopped (₹, assumed)", fontsize=10, color=INK)
         ax.set_title("One analyst, two hours a night", color=INK, fontsize=12, loc="left", pad=10)
-        ax.legend(frameon=False, fontsize=8, loc="upper left")
+        ax.legend(frameon=False, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.16),
+                 ncol=2)
 
-    fig.tight_layout()
     dest = out / "policy_frontier.png"
-    fig.savefig(dest, bbox_inches="tight", facecolor="white")
+    fig.savefig(dest, facecolor="white")
     plt.close(fig)
     return dest
 
@@ -904,17 +1025,25 @@ def lockstep_chart(ls: dict, out: Path) -> Path | None:
     if not fit:
         return None
 
-    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4), dpi=160)
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4), dpi=160, constrained_layout=True)
 
     ax = axes[0]
     _style(ax)
     rels = [r for r in fit if fit[r].get("bins")]
-    colours = plt.cm.tab10(np.linspace(0, 1, max(len(rels), 1)))
-    for rel, colour in zip(rels, colours):
+    # Okabe-Ito colourblind-safe palette, paired with a distinct marker shape per
+    # relation so no line depends on colour alone to be told apart.
+    style_by_rel = {
+        "r1": ("#0072B2", "o"), "r3": ("#D55E00", "s"), "r6": ("#009E73", "^"),
+        "r7": ("#CC79A7", "D"), "r8": ("#E69F00", "v"),
+    }
+    fallback = [("#0072B2", "o"), ("#D55E00", "s"), ("#009E73", "^"),
+                ("#CC79A7", "D"), ("#E69F00", "v")]
+    for i, rel in enumerate(rels):
+        colour, marker = style_by_rel.get(rel, fallback[i % len(fallback)])
         bins = fit[rel]["bins"]
         x = [b["bin"] for b in bins]
         y = [b.get("lift", 1.0) for b in bins]
-        ax.plot(x, y, marker="o", markersize=5, linewidth=1.4, color=colour, label=rel)
+        ax.plot(x, y, marker=marker, markersize=5.5, linewidth=1.4, color=colour, label=rel)
     ax.axhline(1.0, color=MUTED, linewidth=1.0, linestyle="--")
     ax.set_xticks([0, 1, 2, 3])
     ax.set_xticklabels(["Q1\nleast bursty", "Q2", "Q3", "Q4\nmost bursty"], fontsize=8)
@@ -938,7 +1067,6 @@ def lockstep_chart(ls: dict, out: Path) -> Path | None:
         ax.set_title("Crowd test, all five relations", color=INK, fontsize=12, loc="left", pad=10)
         ax.legend(frameon=False, fontsize=8)
 
-    fig.tight_layout()
     dest = out / "lockstep.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -1090,7 +1218,7 @@ def offer_leakage_chart(off: dict, out: Path) -> Path | None:
     if not prec or not cov.get("by_leakage_mean_score"):
         return None
 
-    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4), dpi=160)
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4), dpi=160, constrained_layout=True)
 
     ax = axes[0]
     _style(ax)
@@ -1133,7 +1261,6 @@ def offer_leakage_chart(off: dict, out: Path) -> Path | None:
     ax.set_title("Fraud coverage: precise-but-small vs big-but-blunt", color=INK, fontsize=12,
                  loc="left", pad=10)
 
-    fig.tight_layout()
     dest = out / "offer_leakage.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -1245,7 +1372,7 @@ def label_budget_chart(lb: dict, out: Path) -> Path | None:
     if not points:
         return None
 
-    fig, ax = plt.subplots(figsize=(9.0, 5.2), dpi=160)
+    fig, ax = plt.subplots(figsize=(9.0, 5.2), dpi=160, constrained_layout=True)
     _style(ax)
     ax.set_xscale("log")
 
@@ -1277,9 +1404,9 @@ def label_budget_chart(lb: dict, out: Path) -> Path | None:
     ax.set_ylim(0, 1.0)
     ax.set_title("How much labelled data before this works?", color=INK, fontsize=12,
                  loc="left", pad=10)
-    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    ax.legend(frameon=True, facecolor="white", edgecolor="none", framealpha=0.9,
+              fontsize=8, loc="upper right")
 
-    fig.tight_layout()
     dest = out / "label_budget.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -1382,7 +1509,7 @@ def propagate_chart(pr: dict, out: Path) -> Path | None:
     if not points:
         return None
 
-    fig, ax = plt.subplots(figsize=(9.0, 5.2), dpi=160)
+    fig, ax = plt.subplots(figsize=(9.0, 5.2), dpi=160, constrained_layout=True)
     _style(ax)
     ax.set_xscale("log")
 
@@ -1403,7 +1530,6 @@ def propagate_chart(pr: dict, out: Path) -> Path | None:
                 loc="left", pad=10)
     ax.legend(frameon=False, fontsize=9, loc="upper left")
 
-    fig.tight_layout()
     dest = out / "scorer_by_label_budget.png"
     fig.savefig(dest, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -2437,7 +2563,13 @@ def write_results(cfg, score: dict | None, ring: dict | None,
     if figures:
         a("## Figures\n")
         for f in figures:
-            a(f"![{f.stem}](figures/{f.name})\n")
+            alt, caption = FIGURE_CAPTIONS.get(
+                f.stem, (f.stem.replace("_", " "), None))
+            a(f"![{alt}](figures/{f.name})")
+            if caption:
+                a(f"*{caption}*\n")
+            else:
+                a("")
 
     dest.write_text("\n".join(L))
     return dest
