@@ -19,5 +19,10 @@
     "ring_precision": 0.7292,
     "n_rings": 25
   },
+  "bundle_pass": {
+    "ring_precision": 0.6654,
+    "n_rings": 200,
+    "case_files_shown": 10
+  },
   "note": "Precomputed results, so anyone can look at the console without the 4 GB dataset. The graph itself is not in here - /check serves stored neighbour counts rather than computing a ring live."
 }

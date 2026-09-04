@@ -195,6 +195,14 @@ def build(cfg: Config | None = None) -> dict:
         headline = {"ring_precision": h.get("ring_precision"),
                     "n_rings": hc.get("n_rings")}
 
+    # how deep the pass in this bundle actually goes, so the console can say so
+    bc = rings_payload.get("best_cell") or {}
+    bcell = (rings_payload.get("grid") or {}).get(
+        f"tau={bc.get('tau')},lambda={bc.get('lambda')}", {})
+    bundle_pass = {"ring_precision": bc.get("ring_precision"),
+                   "n_rings": bcell.get("n_rings"),
+                   "case_files_shown": len(rings_payload.get("case_files", []))}
+
     files = sorted(f for f in dest.iterdir() if f.is_file() and f.name != "meta.json")
     total = sum(f.stat().st_size for f in files)
     anchored_members = int(np.isin(keep, must_have).sum())
@@ -208,6 +216,7 @@ def build(cfg: Config | None = None) -> dict:
         "limit_bytes": MAX_BYTES,
         "rings_from": rings_source,
         "headline_pass": headline,
+        "bundle_pass": bundle_pass,
         "note": ("Precomputed results, so anyone can look at the console without the "
                  "4 GB dataset. The graph itself is not in here - /check serves stored "
                  "neighbour counts rather than computing a ring live."),

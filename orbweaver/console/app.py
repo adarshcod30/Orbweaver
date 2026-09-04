@@ -98,14 +98,16 @@ def deep_pass_note() -> str:
     h = meta.get("headline_pass") or {}
     if h.get("ring_precision") is None:
         return ""
-    return (f'<div class="assume"><strong>This is the deep pass.</strong> The '
-            f'queue below is the same operating point taken deeper - every ring '
-            f'the extractor returns, not just the top {esc(h.get("n_rings"))} the '
-            f'headline reports. Precision is {esc((load_report().get("best_cell") or {}).get("ring_precision"))} '
-            f'here against {esc(h.get("ring_precision"))} for the headline pass, '
-            f'because a review queue trades precision for depth. Both are '
-            f'published in <a href="{REPO_URL}/blob/main/docs/results.md">'
-            f'docs/results.md</a>.</div>')
+    b = meta.get("bundle_pass") or {}
+    return (f'<div class="assume"><strong>These figures are the deep pass.</strong> '
+            f'The summary above comes from the same operating point taken deeper - '
+            f'{esc(b.get("n_rings"))} rings rather than the {esc(h.get("n_rings"))} '
+            f'the headline reports - so precision is {esc(b.get("ring_precision"))} '
+            f'here against {esc(h.get("ring_precision"))} there. A review queue '
+            f'trades precision for depth, and both passes are published in '
+            f'<a href="{REPO_URL}/blob/main/docs/results.md">docs/results.md</a>. '
+            f'The cards below are the top {esc(b.get("case_files_shown"))} case '
+            f'files of that pass.</div>')
 
 
 DEMO_BANNER = (
