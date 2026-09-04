@@ -3060,6 +3060,60 @@ sets the boundary in six lines. Built for the Razorpay AI Buildathon, Track 02 �
     return dest
 
 
+def write_social_preview(cfg, ring: dict | None) -> Path | None:
+    """GitHub's link-unfurl and repo social-preview image: 1280x640, same
+    numbers as everything else, no hand-typed figures. Rendered with
+    matplotlib rather than laid out by hand so it stays the same tool that
+    draws every other figure here."""
+    best = (ring or {}).get("best_cell", {}) or {}
+    cell = ((ring or {}).get("grid", {}) or {}).get(
+        f"tau={best.get('tau')},lambda={best.get('lambda')}", {})
+    base = (ring or {}).get("base_rate_among_labelled")
+    if not cell:
+        return None
+
+    fig = plt.figure(figsize=(12.8, 6.4), dpi=100, facecolor="white")
+    fig.patch.set_facecolor("white")
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    ax.text(0.06, 0.80, "Orbweaver", fontsize=54, color=INK, weight="bold",
+             family="sans-serif")
+    ax.text(0.06, 0.665, "Finding coordinated promotion-abuse rings in transaction\n"
+            "graphs — and reporting what it costs to be wrong about them.",
+            fontsize=17, color=MUTED, linespacing=1.5)
+
+    stats = [
+        (cell.get("ring_precision"), "ring precision"),
+        (base, "base rate"),
+        (cell.get("normal_flagged_per_fraud_caught"), "real customers per catch"),
+    ]
+    an = json.loads((cfg.abs_path(cfg.paths.processed) / "anchored.json").read_text()) \
+        if (cfg.abs_path(cfg.paths.processed) / "anchored.json").exists() else {}
+    p3 = ((an.get("summary") or {}).get("persistence_at_0.3") or {}).get(
+        "share_of_final_rings_with_a_predecessor")
+    if p3 is not None:
+        stats.append((f"{p3:.0%}", "case open the night before"))
+
+    x0, w = 0.06, 0.86 / len(stats)
+    for i, (v, label) in enumerate(stats):
+        x = x0 + i * w
+        ax.text(x, 0.38, str(v), fontsize=30, color=ACCENT, weight="bold")
+        ax.text(x, 0.28, label, fontsize=13, color=MUTED)
+
+    ax.axhline(0.50, xmin=0.06, xmax=0.94, color=GRID, linewidth=1.5)
+    ax.text(0.06, 0.06, "Razorpay AI Buildathon · Track 02", fontsize=13, color=MUTED)
+    ax.text(0.94, 0.06, "github.com/adarshcod30/Orbweaver", fontsize=13,
+            color=MUTED, ha="right")
+
+    dest = cfg.abs_path(".") / "docs" / "social-preview.png"
+    fig.savefig(dest, facecolor="white")
+    plt.close(fig)
+    return dest
+
+
 def write_404(cfg) -> Path:
     """GitHub Pages serves this for any path under the site that does not
     exist - the alternative is its own generic, off-brand error page."""
@@ -3442,6 +3496,9 @@ def main() -> None:
     if idx:
         print(f"wrote {idx}")
     print(f"wrote {write_404(cfg)}")
+    sp = write_social_preview(cfg, ring)
+    if sp:
+        print(f"wrote {sp}")
     for f in figures:
         print(f"wrote {f}")
 
