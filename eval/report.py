@@ -1674,6 +1674,115 @@ def _propagate_section(a, proc: Path) -> None:
           "project develops against.\n")
 
 
+def _findings_index(cfg) -> tuple[int, list[str], str]:
+    """(how many investigations there were, the lead sentence of each one that
+    did not work, the heading they live under) recovered from the findings
+    table in README.md.
+
+    That table is the one substantial piece of the README outside the
+    generated markers, so it is the source rather than a second copy: the
+    counts in the opener below cannot disagree with the table they link to,
+    and the anchor is built from the heading actually found rather than from
+    a copy of its wording.
+
+    A row counts as "did not work" if any cell after the finding starts with
+    Negative or Failed, which holds whether the row carries one outcome cell
+    or the two it carries today.
+    """
+    readme = cfg.abs_path(".") / "README.md"
+    if not readme.exists():
+        return 0, [], ""
+    n, leads, heading, seen = 0, [], "", ""
+    for line in readme.read_text().splitlines():
+        if re.match(r"^#{1,6}\s", line):
+            seen = line
+            continue
+        if not re.match(r"^\|\s*\d+\s*\|", line):
+            continue
+        n += 1
+        heading = heading or seen
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or not any(
+                c.lower().startswith(("negative", "failed")) for c in cells[2:]):
+            continue
+        m = re.match(r"\*\*(.+?)\*\*", cells[1])
+        if m:
+            leads.append(m.group(1).strip().rstrip("."))
+    return n, leads, heading
+
+
+def _results_one_minute(cfg, ring: dict | None, proc: Path) -> list[str]:
+    """The orientation block at the top of docs/results.md.
+
+    This is the longest document in the repository and the README links it as
+    "All results", so it is the second thing most readers open - and it used
+    to spend its first two paragraphs on timing caveats before reaching a
+    single result. Every figure here is read from the same artefact as the
+    section it links to, so the opener cannot drift from the body.
+    """
+    if not ring:
+        return []
+    best = ring.get("best_cell", {})
+    cell = ring.get("grid", {}).get(
+        f"tau={best.get('tau')},lambda={best.get('lambda')}", {})
+    if not cell:
+        return []
+    unpruned = next((b for b in ring["grid"].values() if b.get("tau") == 0.0), {})
+    base = ring.get("base_rate_among_labelled")
+
+    L = ["## In one minute\n"]
+    L.append(
+        f"**The headline, with what it costs.** Pruning to suspicious accounts "
+        f"first and *then* peeling for dense structure puts "
+        f"**{cell['ring_precision']}** of a ring's labelled members on the "
+        f"fraud side, against a base rate of {base} — "
+        f"**{cell['precision_lift_over_base']}× chance** — at a measured cost "
+        f"of **{cell['normal_flagged_per_fraud_caught']} real customers swept "
+        f"into a ring for every fraudster caught**, or "
+        f"₹{cell['fp_cost_inr']:,.0f} of legitimate value at the assumed "
+        f"rate. Drop the score cut-off and the identical extractor falls to "
+        f"{unpruned.get('ring_precision')} — "
+        f"{unpruned.get('precision_lift_over_base')}×, worse than picking at "
+        f"random. [Every τ and λ tried →](#{_slug('Rings')}) · "
+        f"[what an hour of analyst time is worth →]"
+        f"(#{_slug('What to do with the queue, given a budget')})\n")
+
+    gen = json.loads((proc / "generalisation.json").read_text()) \
+        if (proc / "generalisation.json").exists() else None
+    if gen:
+        y0 = gen["datasets"]["yelpchi"]["rings"].get("0.0", {})
+        y5 = gen["datasets"]["yelpchi"]["rings"].get("0.5", {})
+        a0 = gen["datasets"]["amazon"]["rings"].get("0.0", {})
+        a3 = gen["datasets"]["amazon"]["rings"].get("0.3", {})
+        if y0 and y5 and a0 and a3:
+            L.append(
+                f"**The finding I would defend hardest.** Dense is not the "
+                f"same as fraudulent, and that is not a fact about this "
+                f"dataset. Run unchanged on two unrelated fraud graphs, the "
+                f"unpruned extractor lands at "
+                f"{a0['precision_lift_over_base']}× base rate on Amazon "
+                f"reviewers and at *exactly zero* on YelpChi — "
+                f"{y0['n_rings']} rings, {y0['accounts_in_rings']:,} accounts, "
+                f"not one of them fraudulent. Prune first and the same code "
+                f"reaches {a3['precision_lift_over_base']:.1f}× and "
+                f"{y5['precision_lift_over_base']:.1f}×. Three platforms, two "
+                f"of them nothing like promotion abuse, saying the same "
+                f"thing. [Both datasets, run unchanged →]"
+                f"(#{_slug('Does any of this work on a graph that is not PPA?')})\n")
+
+    n_found, leads, heading = _findings_index(cfg)
+    if n_found and leads:
+        L.append(f"**{n_found} investigations, {len(leads)} of which did not "
+                 f"work.** Those {len(leads)} are written up beside the "
+                 f"{n_found - len(leads)} that held, in the same table and at "
+                 f"the same length:\n")
+        L += [f"- {lead}" for lead in leads]
+        L.append("")
+        L.append(f"[The findings table →](../README.md#{_slug(heading)}) · "
+                 f"[everything that broke on the way →](../FAILURES.md)\n")
+    return L
+
+
 def write_results(cfg, score: dict | None, ring: dict | None,
                   weights: dict | None, figures: list) -> Path:
     proc = cfg.abs_path(cfg.paths.processed)
@@ -1685,6 +1794,14 @@ def write_results(cfg, score: dict | None, ring: dict | None,
     a("# Results\n")
     a("Generated by `make reproduce`. Every number here is read out of the run "
       "artefacts in `data/processed/`; none of it is typed in by hand.\n")
+
+    L += _results_one_minute(cfg, ring, proc)
+
+    # The reproducibility and timing caveats are true and they stay, but they
+    # are not what someone arriving from the README's "All results" link came
+    # for. They sit under their own heading below the opener so the first
+    # screen of the longest document in the repository carries a result.
+    a("## Reproducing this file\n")
     a("Re-running the pipeline from an empty `data/processed/` reproduces this "
       "file exactly, with one deliberate class of exception: every wall-clock "
       "timing and peak-memory figure - the `/check` latencies (standard and "
@@ -2589,13 +2706,16 @@ def _md_inline(s: str) -> str:
 
 
 def _md_section(text: str, heading: str) -> str:
-    """The raw lines under one heading, up to the next heading of any level -
-    so the landing page can quote a document's own prose instead of keeping a
-    second copy that can drift from it.
+    """The raw lines under one heading, up to the next heading at the same or
+    a higher level - so the landing page can quote a document's own prose
+    instead of keeping a second copy that can drift from it.
 
-    Stopping only at `## ` was a bug: a `###` subheading after the section
-    (FAILURES.md's index of every entry) was swallowed into it and rendered
-    as raw markdown on the page.
+    Both of the obvious rules are wrong, in opposite directions. Stopping only
+    at `## ` swallowed FAILURES.md's `### All 36 entries` into the section
+    above it and rendered its table as raw markdown. Stopping at a heading of
+    *any* level then cut `## Results` off before its own `###` subsection, so
+    the page published an empty findings card and the words "All None
+    investigations". A subsection belongs to its parent; a sibling does not.
     """
     lines = text.splitlines()
     start = None
@@ -2605,12 +2725,22 @@ def _md_section(text: str, heading: str) -> str:
             break
     if start is None:
         return ""
+    level = len(heading) - len(heading.lstrip("#"))
     end = len(lines)
     for i in range(start, len(lines)):
-        if re.match(r"^#{1,6}\s", lines[i]):
+        m = re.match(r"^(#{1,6})\s", lines[i])
+        if m and len(m.group(1)) <= level:
             end = i
             break
     return "\n".join(lines[start:end]).strip()
+
+
+def _slug(heading: str) -> str:
+    """GitHub's anchor for a heading. Runs of spaces are not collapsed, so an
+    em-dash between two words leaves a double hyphen - which is why these are
+    computed from the heading text rather than written out by hand."""
+    s = heading.strip().lstrip("#").strip().lower()
+    return re.sub(r"[^\w\s-]", "", s, flags=re.UNICODE).replace(" ", "-")
 
 
 def _md_list_html(text: str, ordered: bool) -> str:
@@ -3076,7 +3206,7 @@ the same case tomorrow, not a fresh one every morning.</p>
 
 <section class="panel" id="p-results" role="tabpanel" aria-labelledby="t-results">
 <div class="card"><h2>Every number this project produces</h2>
-<p class="sub">All {esc(n_findings) or 'thirteen'} investigations, including
+<p class="sub">All {esc(n_findings or 'thirteen')} investigations, including
 the four that came back negative, generated by <code>make reproduce</code>
 from the run in <code>data/processed/</code>.</p>
 <div class="table-scroll">{results_table_html}</div>
