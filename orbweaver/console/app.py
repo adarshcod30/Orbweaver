@@ -268,7 +268,12 @@ look coordinated — not a verdict.</p>
 <div class="assume">Leads for a human to review, not verdicts. Rupee figures use
 an assumed value — this dataset ships no monetary amounts.</div>
 <p class="sub">Filter the queue, then open a ring for its case file — what the
-members share, how rare it is, and the action the policy recommends.</p>
+members share, how rare that is platform-wide, and what the ring is worth.
+Ordered by rupees at stake.</p>
+<p class="note">No card here recommends review, hold or ignore. That decision is
+priced against an analyst's budget over the anchored nightly queue, which is a
+different set of cases from these — it is reported on the
+<a href="/findings">findings page</a>.</p>
 <form class="controls" hx-get="/rings" hx-target="#rings" hx-trigger="change, load">
   <div><label>shares a</label><select name="shares">{opts}</select></div>
   <div><label>at least this many known fraud</label>
@@ -277,8 +282,9 @@ members share, how rare it is, and the action the policy recommends.</p>
 <div id="rings">{ring_rows(report, "any", 0)}</div>
 <div id="detail"></div>"""
     return page("Orbweaver — ring review queue",
-                "The review queue an analyst would actually be handed: "
-                "evidence and a recommended action, one card per ring.",
+                "The review queue an analyst would actually be handed: the "
+                "evidence behind each ring and what it is worth, one card "
+                "per ring.",
                 body, active="queue")
 
 
