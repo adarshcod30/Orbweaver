@@ -1,6 +1,16 @@
-<!doctype html><meta charset="utf-8">
-<title>Orbweaver — finding coordinated abuse rings</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orbweaver — finding coordinated abuse rings</title>
+<meta name="description" content="Finding coordinated promotion-abuse rings in
+transaction graphs, and reporting what it costs to be wrong about them.">
+<meta property="og:title" content="Orbweaver">
+<meta property="og:description" content="Finding coordinated promotion-abuse
+rings in transaction graphs, and reporting what it costs to be wrong about
+them. 0.7292 ring precision against a base rate of
+0.2242.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/headline_precision_vs_cost.png">
+<meta name="twitter:card" content="summary_large_image">
 <style>
 :root{--ink:#1c1c1c;--muted:#6b6b6b;--line:#e6e6e6;--accent:#c2410c;
 --accent2:#0369a1;--bg:#fbfaf9;--surface:#ffffff;--ok:#166534;--ok-bg:#f0fdf4;
@@ -86,45 +96,215 @@ h1{font-size:22px}
 .card{padding:16px 18px}
 table{font-size:12.5px}
 .act{gap:10px}}
-</style>
+
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0}
+.fstep{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;
+padding:9px 13px;font-size:13px;text-align:center;line-height:1.3}
+.fstep small{color:var(--muted);font-size:11px}
+.fstep.accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+.farrow{color:var(--muted);font-size:16px}
+.toc{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;margin:0 0 28px}
+.toc a{color:var(--muted)}
+figure{margin:0 0 22px;padding:0}
+figure img{width:100%;border:1px solid var(--line);border-radius:8px;
+background:var(--surface)}
+figcaption{color:var(--muted);font-size:12.5px;margin-top:6px}
+.figuregrid{display:grid;grid-template-columns:1fr;gap:0}
+@media (min-width:760px){.figuregrid{grid-template-columns:1fr 1fr;gap:0 24px}}
+#lambda-chart svg circle{cursor:pointer}
+#lambda-chart svg circle:focus-visible{stroke:var(--ink);stroke-width:3px;outline:none}
+h2{scroll-margin-top:16px;border-top:1px solid var(--line);padding-top:32px;
+margin-top:36px}
+h2:first-of-type{border-top:none;padding-top:0;margin-top:0}
+</style></head><body>
 <div class="wrap">
 <h1>Orbweaver</h1>
 <p class="sub"><em>The one that feels the whole web.</em> Finding coordinated
-promotion-abuse rings in transaction graphs — and reporting what it costs to be
-wrong about them.</p>
+promotion-abuse rings in transaction graphs — and reporting what it costs to
+be wrong about them. Built for the Razorpay AI Buildathon, Track 02 — this is
+my submission to their buildathon, not a Razorpay product.</p>
 <div class="bar"><div class="stat"><b>0.7292</b><span>share of a ring worth reviewing</span></div><div class="stat"><b>0.2242</b><span>base rate among labelled accounts</span></div><div class="stat"><b>0.371</b><span>real customers per fraudster caught</span></div><div class="stat"><b>44%</b><span>rings with a case open the night before</span></div><div class="stat"><b>₹67,900</b><span>stopped by one analyst, one hour a night</span></div></div>
-<div class="assume">Every number on these pages is produced by
-<code>make reproduce</code>; none is typed in by hand. Rupee figures use stated
-assumptions, because the dataset ships no monetary amounts, so they rank options
-against each other and mean nothing in absolute terms.</div>
+<div class="assume">Every number on this page is produced by
+<code>make reproduce</code>; none is typed in by hand — this page is quoted,
+not retyped, from <a href="https://github.com/adarshcod30/Orbweaver/blob/main/README.md">README.md</a>.
+Rupee figures use stated assumptions, because the dataset ships no monetary
+amounts, so they rank options against each other and mean nothing absolute.</div>
 
-<div class="card">
-<h2>If you have ten minutes</h2>
-<ol>
-<li><a href="https://github.com/adarshcod30/Orbweaver#the-problem">The problem</a>
- — why a ring is invisible to a per-order scorer.</li>
-<li><a href="case-files.html">The case files</a> — what an analyst is actually
- handed, one card per ring, with the evidence and the recommended action.</li>
-<li><a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md">What
- broke</a> — the honest log. It is the file I would read first.</li>
-<li><a href="results.md">The full results</a> — thirteen investigations, four of
- which came back negative and are reported as such.</li>
-</ol>
+<p class="toc"><a href="#the-problem">the problem</a> ·
+<a href="#why-this-dataset">why this dataset</a> ·
+<a href="#how-it-works">how it works</a> ·
+<a href="#results">results</a> ·
+<a href="#what-these-numbers-do-not-prove">what these numbers do not prove</a> ·
+<a href="#what-broke">what broke</a> ·
+<a href="#figures">figures</a> ·
+<a href="#research-foundation">research foundation</a> ·
+<a href="#try-it">try it</a></p>
+
+<div class="card"><h2 id="the-problem">The problem</h2><p>A food-delivery app gives ₹100 off your first order. A group runs fifty accounts between them — a few people, a few phones, a stack of SIMs registered in other people&#x27;s names — and takes ₹5,000. Every order looks normal on its own; the fraud only exists in the connections between accounts: a shared delivery address, a shared device, the same UPI ID paying for all of them, orders placed close together. A system that scores one transaction at a time cannot see it.</p><p>That is the gap. Razorpay&#x27;s Thirdwatch scores <em>&quot;the probability of the order being fraudulent&quot;</em> — per order. Vulcan runs a transformer over roughly 3,000 signals — per transaction. Both are good at what they do, and a ring is invisible to both, because a ring is not a property of any order. It is a property of the graph between them.</p><p>I checked this rather than assuming it. As of 2 September 2026, Sprint 2026&#x27;s fraud and risk launches are chargeback protection, AML risk screening, an RTO shielder, a dispute auto-responder and biometric card authentication — every one of them scoped to a transaction, a chargeback or an identity. The closest thing to this work is the AML screening, since money-laundering detection is where graph methods usually appear, but it is described as predicting risk early rather than as network analysis. Nothing ring-, group- or graph-level appears anywhere.</p><p>Orbweaver sits downstream of a per-order scorer and looks at the web instead of the strand.</p></div>
+
+<div class="card"><h2 id="why-this-dataset">Why this dataset</h2>
+<p>PPA is the only public, labelled promotion-abuse-ring dataset I could find
+— not the best one, the only one — and I never modified it, because a
+detector's numbers are only honest if the ground truth they are checked
+against is real. The full case for why this is still the right dataset to
+have started from, what its own paper claims that the release does not
+support, and how the hostel test and three unrelated datasets test the
+method past PPA, is in
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/why-this-data.md">docs/why-this-data.md</a>.</p>
 </div>
 
-<div class="card">
-<h2>Pages here</h2>
+<div class="card"><h2 id="how-it-works">How it works</h2>
+<p>Five stages, run over a finished week for the headline numbers and one night at a time for the replay: one night of data puts the queue at chance, and it takes four to reach the number below. <code>docs/architecture.md</code> walks through every stage; <code>docs/design-decisions.md</code> explains the one place a model is allowed to touch the outcome.</p>
+<div class="flow" role="img" aria-label="orders flow into a multi-relation
+graph, into account scoring, into pruning, into peeling, into ring plus
+evidence, into a review policy. Nights one through four replay this whole
+loop, anchored so a case survives the night.">
+<div class="fstep">orders</div><div class="farrow">→</div>
+<div class="fstep">graph<br><small>rarity × relation weight</small></div><div class="farrow">→</div>
+<div class="fstep">scorer<br><small>the one learned step</small></div><div class="farrow">→</div>
+<div class="fstep">prune<br><small>score cut-off τ</small></div><div class="farrow">→</div>
+<div class="fstep">peel<br><small>densest-subgraph, proved bound</small></div><div class="farrow">→</div>
+<div class="fstep">ring + evidence</div><div class="farrow">→</div>
+<div class="fstep accent">policy</div>
+</div>
+<p class="note">Replayed one night at a time for the nightly numbers below:
+rings are anchored around fixed accounts so a case found tonight is
+recognisably the same case tomorrow, not a fresh one every morning.</p>
+<ol><li><strong>Builds a graph</strong> of accounts linked by the entities they share, with each edge weighted by how rare that entity is <em>and</em> how much that kind of sharing actually predicts fraud.</li><li><strong>Scores accounts</strong> with gradient boosting over 39 engineered features — the one learned step in the whole pipeline.</li><li><strong>Prunes, then peels.</strong> A score cut-off removes ordinary accounts first; a densest-subgraph algorithm with a proved approximation bound decides ring membership on what is left, so every membership decision is inspectable — not a model&#x27;s opinion.</li><li><strong>Attaches evidence</strong> to each ring: what the members share, how rare it is, when they acted, the rupees at stake, and the cost of being wrong.</li><li><strong>Prices the response.</strong> A capacity-aware policy recommends review, auto-hold or ignore under a stated reviewer budget, with the two numbers that justify it on every case card.</li></ol>
+</div>
+
+<div class="card"><h2 id="results">Results</h2>
+<p>All 13 investigations this project ran,
+including the four that came back negative, generated by
+<code>make reproduce</code> from the run in <code>data/processed/</code>:</p>
+<table><tr><td>Graph</td><td>35,701,750 edges over the accounts active in the scoring window</td></tr><tr><td>Ring precision</td><td><strong>0.7292</strong> against a base rate of 0.2242 — 3.252×</td></tr><tr><td>Cost of that</td><td>0.371 real customers placed in a ring per fraudster caught</td></tr><tr><td>Without the score cut-off</td><td>0.0696 — 0.31×, i.e. worse than picking at random</td></tr><tr><td>Account scorer</td><td>AUPRC 0.3796 on held-out accounts, 1.693× random</td></tr><tr><td>Three relations I cannot rebuild</td><td>worth +0.122 precision and +269 fraud accounts on the authors&#x27; own graph</td></tr><tr><td>Hostel test</td><td>2 of 2,446 legitimate co-located groups touched (0.08%)</td></tr><tr><td>The relation only a platform can see</td><td>worth +0.024 to +0.038 ring precision at equal review capacity (250-500 accounts)</td></tr><tr><td>Time to detection, replaying night by night</td><td>median 4 of 4 nights; 33.4% of a ring&#x27;s spend still ahead of it when it is found</td></tr><tr><td>Ranking rings by confidence</td><td>the mean member score wins at 200 rings (0.6739) — a trained ring model gets 0.5989, density 0.5814</td></tr><tr><td>Yesterday&#x27;s rings as a feature</td><td>+0.0011 AUPRC — it reaches 0.15% of held-out accounts. <code>/check</code> answers in 0.01 ms at the median</td></tr><tr><td>Behaviour edges against fragmentation</td><td>+0.0237 ring precision when the ring is split into threes, -0.0023 when it is split into twenties</td></tr><tr><td>The same method on a payment processor&#x27;s graph</td><td>0.5079 precision, 18.138× its base rate, at 0.969 good cards per fraudulent one caught</td></tr><tr><td>What one analyst an hour a night stops</td><td>₹67,900 of promotion value against ₹200 for working the queue in order, for ₹16,040 of legitimate value harmed (assumed rupees)</td></tr><tr><td>Telling a crowd from a ring by when it formed</td><td>burst-weighted ring precision -0.0149 on PPA; on IEEE-CIS the apartment-cluster weakness is unchanged at 4 of 7 touched at every resolution tried</td></tr><tr><td>Which offers are being farmed</td><td>top 50 offers by size (325,494 accounts) cover 7.1% of all labelled fraud, 19.7x the 0.36% ring recall ceiling</td></tr><tr><td>How many confirmed cases before this works</td><td>prune-then-peel first beats the base rate at 1,146 confirmed accounts (0.5% of the training pool)</td></tr><tr><td>Spreading what few labels there are</td><td>Fast Belief Propagation, no fitted model: 0.4615 held-out AUPRC at full labels, 0.9886 ring precision pruning on its beliefs alone</td></tr><tr><td>A ring you can find again tomorrow</td><td>44% of final rings had a case open the night before (global peeling: 4%); 0.7167 precision against 0.7292 for the cost of a case id</td></tr></table>
+<ol><li><strong>Dense is not the same as fraudulent.</strong> On the raw graph the densest subgraphs are large ordinary communities — people who happened to use the same promotion — and ring precision comes out <em>below</em> the base rate. Filtering to suspicious accounts first, then looking for dense structure inside that region, is what makes the output useful. That ordering is the single most important thing I learned building this, and it replicates on two unrelated datasets: run unchanged on Amazon reviewers and YelpChi reviews, the unpruned extractor again lands below the base rate — on YelpChi at <em>exactly zero</em>, 25 rings and 1,914 accounts without a single fraudster — while pruning first reaches 14.3× and 6.9×.</li><li><strong>The relation that dominates the graph carries the weakest signal.</strong> Promotion edges are 70% of the graph at 1.76× fraud lift; location edges are 16% at 3.71×. Weighting relations by measured evidential value, fitted on training accounts only, follows directly.</li><li><strong>The link only a platform can see is worth measuring, not assuming.</strong> On YelpChi, removing the one relation that spans businesses costs two to four points of ring precision at equal review capacity. I had argued the aggregator&#x27;s advantage with simulated edges before this; now it is a measurement on real labels, and the simulated version is a sensitivity check.</li><li><strong>One night of data is worth nothing, and rings do not survive the night.</strong> Replaying the window a night at a time, a single night puts the queue at the base rate — chance — and it takes four nights to reach the headline number. Worse, no ring found on the last night had a recognisable predecessor, so a case could not be tracked at all. <strong>Anchoring the extraction fixed that</strong>: 44% of the final rings now have a case open the night before against 0% for the global extractor, at a cost of 0.0125 precision.</li><li><strong>The crudest baseline beat the model I built to replace it.</strong> A ring-level confidence model lost to simply ranking by the mean score of a ring&#x27;s members, at every depth. The reason is visible in the training data: 90.6% of the candidate rings are already fraudulent, so there is almost nothing for a ring-level model to separate.</li><li><strong>Ring history does not transfer to the next window.</strong> Feeding &quot;was this account in a ring last window&quot; back into the account score moves held-out AUPRC by +0.0011. The ceiling was set before the model ran: the feature is non-zero for 0.15% of held-out accounts. Rings are window-specific objects — the accounts recur, the groupings do not.</li><li><strong>Behaviour edges raise the price of fragmentation without defeating it.</strong> Splitting a ring into cells of three takes precision from 0.73 to 0.45. Mutual nearest-neighbour edges in behaviour space — which an attacker cannot cut by severing shared entities — recover +0.0237 of that, and nothing at all at cells of twenty. Fragmentation remains the attack that works.</li><li><strong>The method transfers to a payment processor&#x27;s graph, and its weakest point moves with it.</strong> On IEEE-CIS the same pipeline reaches 0.5079 ring precision at 18.1× the base rate. But the apartment-building analogue of the hostel test touches 4 of 7 clusters, against 2 of 2,446 here, because the billing address is at once the most informative relation and the thing that legitimately ties every card in a building together.</li><li><strong>The analyst is not the bottleneck I built for.</strong> Pricing review against auto-hold under a fixed budget, the fraud stopped does not change between thirty analyst-minutes a night and two hundred and forty — auto-holding already stops it. What analyst time buys is a 39% fall in legitimate value harmed. On these assumptions the reviewer is a false-positive control rather than a detector, which is not what I expected.</li><li><strong>Telling a crowd from a ring by when it formed did not pay off, and the fair test explains why.</strong> Weighting edges by entity-arrival burstiness costs 0.0149 ring precision on PPA, with no clean per-relation story — one relation&#x27;s least-bursty quartile carries the highest fraud lift, another&#x27;s the opposite. IEEE-CIS was built to test this properly, with second-resolution timestamps PPA cannot offer, and it returned as clean a null as this project has produced: the same 4 of 7 apartment clusters touched at every resolution from one hour to one day. The billing address is not informative <em>despite</em> being shared by a legitimate building — it is informative <em>because of it</em> — and no reweighting of the same edges changes which edges those are.</li><li><strong>Which offers are being farmed splits into a precision ranking and a coverage ranking, and they are not the same offers.</strong> A leakage score built from no label — ring share and mean member score — beats the base rate by 2.5–3.8× at top 25 and 50. But leakage ranks small, concentrated offers first, which caps how much fraud they can ever touch: fifty offers by leakage cover 0.04% of all labelled fraud, against 7.1% — 19.7× the ring&#x27;s own recall ceiling — ranked by raw size instead, at the cost of reviewing 325,494 accounts rather than a few hundred. Which ranking to use is a review-capacity decision, not a technical one.</li><li><strong>A team with almost no confirmed fraud labels is not starting from nothing.</strong> Prune-then-peel already beats the base rate at the smallest fraction tested — 1,146 confirmed accounts, 0.5% of the training pool. Held-out AUPRC keeps climbing meaningfully all the way to 100% of the pool; no plateau appears within the range tested, so more labels would plausibly still help past where this sweep stops.</li><li><strong>A method with no fitted model at all beat both learned scorers, and the reason it does is not the reason I expected.</strong> Fast Belief Propagation — one sparse linear system, a proven convergence condition, priors from confirmed labels only — reaches 0.4615 held-out AUPRC at full label availability against XGBoost&#x27;s 0.3796 and GraphSAGE&#x27;s 0.3819, and pruning on its beliefs alone lifts ring precision to 0.9886 with three times the recall at the same review cost. The hypothesis going in was that propagation wins when labels are scarce; the data says the opposite — it trails both learned scorers from 0.5% through 20% of the training pool and only crosses over at 50%. Propagation needs seeds to spread from, and needs enough of them before it out-reaches a feature model that has no such blind spot.</li></ol>
+</div>
+
+<div class="card"><h2 id="lambda-chart-h">How much the model's opinion matters, interactively</h2>
+<p class="sub">At the score cut-off this project uses (τ = 0.5), this is
+ring precision as λ moves the peeling objective from pure structure
+(λ = 0) toward weighing the account scorer's opinion more heavily. The same
+numbers are in the row above and in
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md#ring-precision-across-the-full-cut-off-tau-by-structure-weight-lambda-grid">docs/results.md</a>.</p>
+<div id="lambda-chart" aria-label="Ring precision against lambda, a line chart">
+<noscript>JavaScript is off — see the table below.</noscript>
+</div>
+<script id="chart-data" type="application/json">[{"lambda": 0.0, "precision": 0.6646, "cost": 0.505}, {"lambda": 0.5, "precision": 0.6658, "cost": 0.502}, {"lambda": 1.0, "precision": 0.7021, "cost": 0.424}, {"lambda": 2.0, "precision": 0.7014, "cost": 0.426}, {"lambda": 5.0, "precision": 0.7292, "cost": 0.371}]</script>
+<details class="chart-table"><summary>View as a table</summary><table><tr><th>λ</th><th class="num">ring precision</th><th class="num">real customers per catch</th></tr><tr><td>0.0</td><td class="num">0.6646</td><td class="num">0.505</td></tr><tr><td>0.5</td><td class="num">0.6658</td><td class="num">0.502</td></tr><tr><td>1.0</td><td class="num">0.7021</td><td class="num">0.424</td></tr><tr><td>2.0</td><td class="num">0.7014</td><td class="num">0.426</td></tr><tr><td>5.0</td><td class="num">0.7292</td><td class="num">0.371</td></tr></table></details>
+</div>
+
+<div class="card"><h2 id="what-these-numbers-do-not-prove">What these numbers do not prove</h2>
+<ul><li><strong>PPA is Chinese food-delivery data.</strong> The method is data-agnostic; the numbers are not Indian. The hostel test is the closest I can get to the most India-specific failure mode, and real validation needs Indian data. The Amazon and YelpChi runs show the method transfers, but those are US review fraud, not Indian payments. <a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/why-this-data.md">docs/why-this-data.md</a> makes the full case for why this is still the right dataset to have started from.</li><li><strong>The generalisation runs are a weaker test than the PPA one.</strong> Amazon and YelpChi ship no timestamps, so that split is account-disjoint but not forward in time. They are also easier problems — both have real node features, which PPA does not — so their much higher numbers say more about what those datasets give you than about the method.</li><li><strong>The released dataset is not the one in the paper.</strong> It is the test week only — 3,267,961 accounts and 10,012,449 edges, not 5.69M and 29M — and three of its eight relation types have no values at all in the order files. Every number here is against what is actually downloadable. See <code>docs/data.md</code>.</li><li><strong>The rupee figures rest on stated assumptions.</strong> PPA ships no monetary amounts whatsoever. The ₹ columns are counts multiplied by an assumed value, labelled as such in the output itself, and they rank operating points against each other rather than meaning anything absolute.</li><li><strong>Ring recall is low by construction.</strong> Rings surface a few hundred accounts for human review, not the whole population. The question a review queue asks is what share of what it looks at is worth looking at.</li><li><strong>No account holdout exists in the published baselines</strong>, and they count unlabelled accounts as negatives. Comparisons to them are only like-for-like in the convention that does the same, and <code>docs/results.md</code> reports both.</li></ul>
+</div>
+
+<div class="card"><h2 id="where-machine-learning-is-used">Where machine learning is used, and where it is not</h2>
+<p>One learned component: the account scorer. Ring membership is decided by a deterministic objective with an approximation bound, so &quot;why is this account in this ring?&quot; has an answer a person can check by hand. A second, deliberately provable method — Fast Belief Propagation — is reported beside it and, on this graph, beats it; neither is on the critical path in place of the other.</p><p>No language model is anywhere in the detection or decision path. <strong><a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/design-decisions.md">docs/design-decisions.md</a></strong> explains the reasoning.</p>
+</div>
+
+<div class="card"><h2 id="what-broke">What broke</h2>
+<p class="sub">The five that mattered, out of
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md">FAILURES.md</a>'s
+full, dated log:</p>
+<ul><li><strong>Dense groups were innocent</strong> — the densest subgraphs kept turning out to be ordinary clusters rather than fraud rings, and that single result changed how ranking works in this project. <a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md#2-september--the-densest-groups-were-the-innocent-ones">Read it →</a></li><li><strong>A model trained on strangers</strong> — two files used two different id spaces, and the silent leak between them let a model score well on accounts it had never truly seen. <a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md#2-september--i-trained-a-model-on-183370-strangers">Read it →</a></li><li><strong>A rewrite the tests missed</strong> — a fresh clone produced a number my own machine no longer did, because the rewrite was checked by its tests but published by a file the rewrite never touched. <a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md#4-september--the-fresh-clone-caught-a-number-my-own-machine-had-stopped-producing">Read it →</a></li><li><strong>The hostel test came back clean</strong> — time alone did not separate the hostel from the ring even where the data gave it every chance to, and the fair test built for exactly that weakness returned a clean null. <a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md#4-september--time-did-not-separate-the-hostel-from-the-ring-even-where-the-data-gave-it-every-chance-to">Read it →</a></li><li><strong>Propagation ran backwards</strong> — belief propagation lost when labels were scarce and only won once they were not, the opposite of the stated hypothesis, with the real mechanism not the one written down beforehand. <a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md#4-september--propagation-lost-when-labels-were-scarce-and-only-won-once-they-were-not">Read it →</a></li></ul>
+</div>
+
+<div class="card"><h2 id="figures">Figures</h2>
+<p class="sub">All 16 of them, regenerated by
+<code>make report</code>; the exact captions in
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md">docs/results.md</a>.</p>
+<div class="figuregrid"><figure><img src="figures/adversarial.png" loading="lazy" alt="Ring precision as a ring is fragmented into smaller cells, with and without behavioural edges"><figcaption>Precision falls sharply as cells shrink; behavioural edges recover some of it at cells of three and recover nothing at cells of twenty - fragmentation remains the evasion that works.</figcaption></figure><figure><img src="figures/headline_precision_vs_cost.png" loading="lazy" alt="Ring precision against false-positive cost across score cut-offs"><figcaption>Each point is one score cut-off (tau); the headline operating point is marked. Precision rises steeply then flattens as the cut-off tightens, while cost falls - the marked point is where that trade-off was judged worth making, not the only defensible choice.</figcaption></figure><figure><img src="figures/ieee_relation_lift.png" loading="lazy" alt="Fraud-fraud lift by relation on the IEEE-CIS payment-processor graph"><figcaption>The same lift-versus-share pattern as PPA, on a different dataset. address_distance is the same billing address and distance band; device the same device; email_recipient the same recipient e-mail domain; browser the same browser build; email_payer the same payer e-mail domain, the one relation no better than chance.</figcaption></figure><figure><img src="figures/label_budget.png" loading="lazy" alt="Held-out AUPRC and ring precision against the number of confirmed labels used"><figcaption>Even the smallest label budget tested (1,146 accounts) already beats the base rate, and AUPRC keeps climbing all the way to full label availability with no plateau visible in the range tested.</figcaption></figure><figure><img src="figures/lockstep.png" loading="lazy" alt="Ring precision with and without burst-weighted edges, by relation and by dataset"><figcaption>Burst-weighting costs precision on PPA with no clean per-relation story, and leaves the IEEE-CIS apartment-cluster weakness exactly unchanged - a negative result, shown rather than omitted.</figcaption></figure><figure><img src="figures/merchant_vs_platform.png" loading="lazy" alt="Ring precision and node AUPRC with and without the one relation only a platform can see"><figcaption>Removing the cross-business relation costs both ring precision and account-scoring AUPRC - real, measured evidence for what an aggregator&#x27;s view is worth, not an assumption.</figcaption></figure><figure><img src="figures/offer_leakage.png" loading="lazy" alt="Precision at k and cumulative fraud coverage for two offer rankings"><figcaption>Ranking offers by leakage is precise but narrow - it covers very little of all labelled fraud, because it puts small offers first. Ranking by raw size covers far more at a much larger review cost. Neither ranking dominates; which to use is a capacity decision.</figcaption></figure><figure><img src="figures/policy_frontier.png" loading="lazy" alt="What each review policy stops against what it costs, by reviewer budget; and one analyst&#x27;s cumulative catch across four nights"><figcaption>Left: the capacity-aware policy holds fraud stopped roughly flat while cutting legitimate harm as the budget grows - more analyst time buys fewer wrongly-harmed customers, not more fraud caught. Right: an analyst working two hours a night keeps catching new fraud value every night of the replay, not just the first.</figcaption></figure><figure><img src="figures/queue_by_ranking.png" loading="lazy" alt="Precision at depth for three ways of ranking rings"><figcaption>Ranking rings by their members&#x27; mean account score beats both a trained ring-confidence model and raw density, at every depth tested - the simplest ranking wins here, not the most sophisticated one.</figcaption></figure><figure><img src="figures/relation_lift.png" loading="lazy" alt="Fraud-fraud lift by relation, against each relation&#x27;s share of all edges"><figcaption>The relation carrying the most edges (promotion) has the weakest evidential lift; the rarest relations are the strongest evidence per edge. Edge count and evidential value are not the same thing.</figcaption></figure><figure><img src="figures/ring_calibration.png" loading="lazy" alt="Predicted versus realised precision, by confidence decile"><figcaption>Points near the diagonal mean the ring-confidence model&#x27;s stated probability is trustworthy at that decile; points off it show where the model is over- or under-confident.</figcaption></figure><figure><img src="figures/ring_context.png" loading="lazy" alt="Held-out AUPRC with and without last window&#x27;s ring membership as a feature"><figcaption>The lift is small (+0.0011) because the feature is only ever non-zero for 0.15% of held-out accounts - most accounts were in no ring last window, so there is nothing for the feature to carry forward for them.</figcaption></figure><figure><img src="figures/ring_persistence.png" loading="lazy" alt="Share of final-night rings with a predecessor the night before, anchored against global extraction"><figcaption>Anchoring the extraction around fixed accounts is what makes a case trackable from one night to the next - global peeling recomposes the whole graph every night and loses almost every case in the process.</figcaption></figure><figure><img src="figures/ring_precision_grid.png" loading="lazy" alt="Ring precision across the full cut-off (tau) by structure-weight (lambda) grid"><figcaption>Precision depends far more on the score cut-off than on how much the peeling objective weighs the model&#x27;s opinion - most of the grid&#x27;s variation runs along the tau axis, not the lambda axis.</figcaption></figure><figure><img src="figures/scorer_by_label_budget.png" loading="lazy" alt="Held-out AUPRC against label budget for three scorers: XGBoost, Fast Belief Propagation, GraphSAGE"><figcaption>Belief propagation trails both learned scorers until roughly half the training pool is labelled, then overtakes both - the crossover is real and the hypothesis going in predicted the opposite order.</figcaption></figure><figure><img src="figures/time_to_detection.png" loading="lazy" alt="Ring precision and days-to-detection, replaying the window night by night"><figcaption>One night of data lands at the base rate; it takes four nights of replay to reach the precision this project reports as its headline number, which is the real cost of not anchoring cases across nights.</figcaption></figure></div>
+</div>
+
+<div class="card"><h2 id="research-foundation">Research foundation</h2>
+<ul><li><strong>PPA</strong>, released with PromoGuardian (IEEE S&amp;P 2026) — <a href="https://arxiv.org/abs/2510.12652">arXiv:2510.12652</a> · <a href="https://github.com/0xllssFF/PromoGuardian">code</a> · <a href="https://osf.io/rasje/?view_only=671050154acf4c0fa6b86a9337e74c2c">data</a>. Contributed the labelled dataset this project measures everything against. Nothing here reuses their code or their checkpoint; the graph construction, scorer, extractor, evidence, replay, anchoring, policy and propagation are mine, run on the data they released.</li><li>Charikar, <em>Greedy approximation algorithms for finding dense components</em>, APPROX 2000. Contributed the ½-approximation the peeling objective here relies on.</li><li>Hooi et al., <em>FRAUDAR: Bounding Graph Fraud in the Face of Camouflage</em>, KDD 2016. Contributed the camouflage-resistant weighting and the bound for the node-prior form of the objective used here.</li><li>Bahmani, Kumar &amp; Vassilvitskii, <em>Densest Subgraph in Streaming and MapReduce</em>, VLDB 2012. Contributed the batch-peeling approximation this project uses to extract rings at 35.7M-edge scale.</li><li>Khuller &amp; Saha, <em>On finding dense subgraphs</em>, ICALP 2009. Established the NP-hardness result that motivates a constant-factor approximation rather than an exact solver once a size constraint is added.</li><li>Xu, Ma, Fang et al., <em>Efficient and Effective Algorithms for Generalized Densest Subgraph Discovery</em>, SIGMOD 2023. Contributed the empirical bound this project cites for greedy peeling under a size ceiling.</li><li>Dai et al., <em>Anchored Densest Subgraph</em>, SIGMOD 2022. Contributed the anchored formulation this project uses so a case survives from one night to the next.</li><li>Greene, Doyle &amp; Cunningham, <em>Tracking the Evolution of Communities in Dynamic Social Networks</em>, ASONAM 2010. Contributed the life-cycle events and Jaccard threshold this project&#x27;s case-identity tracking is built on.</li><li>Koutra, Ke, Kang, Chau, Pao, Faloutsos, <em>Unifying Guilt-by-Association Approaches: Theorems and Fast Algorithms</em>, ECML-PKDD 2011. Contributed Fast Belief Propagation, implemented here exactly as specified and reported beside the learned scorer.</li><li>Tang et al., <em>GADBench</em>, NeurIPS 2023. Contributed the finding that gradient boosting over graph-aggregated features is a strong first scorer, which is why this project starts there, and the two generalisation datasets below.</li><li>Dou et al., <em>Enhancing Graph Neural Network-based Fraud Detectors against Camouflaged Fraudsters</em> (CARE-GNN), CIKM 2020. Contributed the Amazon and YelpChi releases this project runs unchanged as a transfer check.</li><li>Razorpay, <a href="https://razorpay.com/blog/detect-fraud-using-ml-ai-thirdwatch/">Thirdwatch</a> — the per-order framing this project is complementary to, not a replacement for.</li></ul>
+</div>
+
+<div class="card"><h2 id="repository-map">Repository map</h2>
+<table><tr><th>Path</th><th>What is in it</th></tr><tr><td><code>orbweaver/</code></td><td>The package: graph construction, scoring, ring extraction, evidence, console, adversarial evaluation</td></tr><tr><td><code>eval/</code></td><td>Every evaluation and report script — one investigation each, one artefact each</td></tr><tr><td><code>tests/</code></td><td>The suite; the temporal-split and planted-ring tests gate every number</td></tr><tr><td><code>config/default.yaml</code></td><td>Every threshold, seed and cost assumption in one place</td></tr><tr><td><code>scripts/</code></td><td>Dataset download, the demo-console smoke test, the voice check</td></tr><tr><td><code>docs/</code></td><td>Everything below</td></tr><tr><td><code>docs/results.md</code></td><td>Every number and figure, generated</td></tr><tr><td><code>docs/why-this-data.md</code></td><td>Why PPA, why untouched, what transfer does and does not show</td></tr><tr><td><code>docs/architecture.md</code></td><td>The five stages, in depth</td></tr><tr><td><code>docs/design-decisions.md</code></td><td>Where machine learning is used, and where it deliberately is not</td></tr><tr><td><code>docs/data.md</code></td><td>What the released dataset actually is, measured from the files</td></tr><tr><td><code>docs/threat-model.md</code></td><td>What this catches, what it does not, how an adversary evades it</td></tr><tr><td><code>docs/case-files.html</code></td><td>The review queue as a static page, no server needed</td></tr><tr><td><code>demo/</code></td><td>The ≤2 MB bundle the console and Pages both run from with no dataset present</td></tr><tr><td><code>api/</code></td><td>The Vercel entrypoint that serves the same console from the same bundle</td></tr><tr><td><code>FAILURES.md</code></td><td>The honest log</td></tr><tr><td><code>ETHICS.md</code></td><td>Scope and ethics, six lines</td></tr><tr><td><code>CITATION.cff</code></td><td>How to cite this if you use it</td></tr></table>
+</div>
+
+<div class="card"><h2 id="try-it">Try it</h2>
 <ul>
-<li><a href="case-files.html">case-files.html</a> — the review queue as a
- standalone page, no server needed.</li>
-<li><a href="results.md">results.md</a> — every table and figure.</li>
-<li><a href="architecture.md">architecture.md</a> · <a href="data.md">data.md</a>
- · <a href="design-decisions.md">design-decisions.md</a>
- · <a href="threat-model.md">threat-model.md</a></li>
+<li><a href="https://orbweaver-adarshcod30s-projects.vercel.app">Live console</a>
+ — the review queue, one card per ring, a nightly replay view and an
+ account lookup, running from the demo bundle.</li>
+<li><a href="case-files.html">case-files.html</a> — the same review queue as
+ a standalone page, no server needed.</li>
+<li><a href="https://github.com/adarshcod30/Orbweaver">Source</a>, and
+ running it locally:
+<pre><code>git clone https://github.com/adarshcod30/Orbweaver
+cd Orbweaver
+pip install -r requirements-demo.txt
+make console      # http://127.0.0.1:8000, no dataset needed</code></pre></li>
 </ul>
-<p class="note">The repository also carries a 1.69 MB demo bundle, so the live console runs from a clone with no dataset at all.</p>
+<p class="note">The repository carries a 1.69 MB demo bundle, so the live console and a fresh clone both run with no dataset present at all.</p>
 </div>
 
-<p class="sub">Built for the Razorpay AI Buildathon, Track 02 ·
+<p class="sub">MIT-licensed. Detection only —
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/ETHICS.md">ETHICS.md</a>
+sets the boundary in six lines. Built for the Razorpay AI Buildathon, Track 02 ·
 <a href="https://github.com/adarshcod30/Orbweaver">source</a></p>
 </div>
+<script>
+(function(){
+  var dataEl = document.getElementById('chart-data');
+  var host = document.getElementById('lambda-chart');
+  if (!dataEl || !host) return;
+  var data;
+  try { data = JSON.parse(dataEl.textContent); } catch (e) { return; }
+  if (!data || !data.length) return;
+  var w = 640, h = 260, pad = {l: 42, r: 16, t: 14, b: 30};
+  var xs = data.map(function(d){return d.lambda;});
+  var ys = data.map(function(d){return d.precision;});
+  var xmin = Math.min.apply(null, xs), xmax = Math.max.apply(null, xs);
+  var ymin = 0, ymax = Math.max.apply(null, ys) * 1.15;
+  function X(x) { return pad.l + (xmax > xmin ? (x - xmin) / (xmax - xmin) : 0.5) * (w - pad.l - pad.r); }
+  function Y(y) { return h - pad.b - (ymax > ymin ? (y - ymin) / (ymax - ymin) : 0) * (h - pad.t - pad.b); }
+  var svgNS = 'http://www.w3.org/2000/svg';
+  var svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Ring precision rises with lambda at this score cut-off');
+  [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
+    var y = pad.t + f * (h - pad.t - pad.b);
+    var l = document.createElementNS(svgNS, 'line');
+    l.setAttribute('x1', pad.l); l.setAttribute('x2', w - pad.r);
+    l.setAttribute('y1', y); l.setAttribute('y2', y);
+    l.setAttribute('stroke', 'var(--line)'); l.setAttribute('stroke-width', '1');
+    svg.appendChild(l);
+    var t = document.createElementNS(svgNS, 'text');
+    t.setAttribute('x', 4); t.setAttribute('y', y + 4);
+    t.setAttribute('font-size', '10'); t.setAttribute('fill', 'var(--muted)');
+    t.textContent = (ymax - (ymax - ymin) * f).toFixed(2);
+    svg.appendChild(t);
+  });
+  var path = data.map(function(d, i){
+    return (i ? 'L' : 'M') + X(d.lambda) + ',' + Y(d.precision);
+  }).join(' ');
+  var p = document.createElementNS(svgNS, 'path');
+  p.setAttribute('d', path); p.setAttribute('fill', 'none');
+  p.setAttribute('stroke', 'var(--accent)'); p.setAttribute('stroke-width', '2.5');
+  svg.appendChild(p);
+  data.forEach(function(d){
+    var c = document.createElementNS(svgNS, 'circle');
+    c.setAttribute('cx', X(d.lambda)); c.setAttribute('cy', Y(d.precision));
+    c.setAttribute('r', 5.5); c.setAttribute('fill', 'var(--accent)');
+    c.setAttribute('tabindex', '0');
+    c.setAttribute('aria-label', 'lambda ' + d.lambda + ', ring precision ' + d.precision);
+    var t = document.createElementNS(svgNS, 'title');
+    t.textContent = 'λ=' + d.lambda + '  precision ' + d.precision;
+    c.appendChild(t);
+    var x = document.createElementNS(svgNS, 'text');
+    x.setAttribute('x', X(d.lambda)); x.setAttribute('y', h - 8);
+    x.setAttribute('font-size', '10'); x.setAttribute('fill', 'var(--muted)');
+    x.setAttribute('text-anchor', 'middle');
+    x.textContent = d.lambda;
+    svg.appendChild(x);
+    svg.appendChild(c);
+  });
+  host.textContent = '';
+  host.appendChild(svg);
+})();
+</script>
+</body></html>

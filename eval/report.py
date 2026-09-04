@@ -2575,17 +2575,144 @@ def write_results(cfg, score: dict | None, ring: dict | None,
     return dest
 
 
+def _md_inline(s: str) -> str:
+    """Bold, code, italic, links - the handful of inline markdown constructs
+    the prose in README.md and docs/*.md actually uses. Not a general
+    parser; it does not need to be, and a general one would be one more
+    place a rendering bug could hide."""
+    s = esc(s)
+    s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+    s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", s)
+    s = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', s)
+    return s
+
+
+def _md_section(text: str, heading: str) -> str:
+    """The raw lines under one `## heading` in README.md, up to the next
+    `## ` heading - so the landing page can quote README's own prose
+    instead of keeping a second copy that can drift from it."""
+    lines = text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == heading:
+            start = i + 1
+            break
+    if start is None:
+        return ""
+    end = len(lines)
+    for i in range(start, len(lines)):
+        if lines[i].startswith("## "):
+            end = i
+            break
+    return "\n".join(lines[start:end]).strip()
+
+
+def _md_list_html(text: str, ordered: bool) -> str:
+    """A markdown list (numbered or bulleted), continuation lines included,
+    as an <ol>/<ul>. Every finding and caveat in README wraps across several
+    lines with no blank line between items, so an item ends at the next
+    marker line, not at the next blank line."""
+    marker = re.compile(r"^\d+\.\s+(.*)$") if ordered else re.compile(r"^-\s+(.*)$")
+    hrule = re.compile(r"^-{3,}\s*$")
+    items: list[str] = []
+    cur: list[str] | None = None
+    for line in text.splitlines():
+        if hrule.match(line):
+            continue
+        m = marker.match(line)
+        if m:
+            if cur is not None:
+                items.append(" ".join(cur))
+            cur = [m.group(1)]
+        elif not line.strip():
+            continue
+        elif cur is not None:
+            cur.append(line.strip())
+    if cur is not None:
+        items.append(" ".join(cur))
+    tag = "ol" if ordered else "ul"
+    return (f"<{tag}>" + "".join(f"<li>{_md_inline(i)}</li>" for i in items)
+            + f"</{tag}>")
+
+
+def _md_table_html(text: str) -> str:
+    """A GitHub-flavoured pipe table as an HTML table. Skips the alignment
+    row; renders the header row as <th> only if it has non-blank cells (the
+    results table's header is blank on purpose, a bare key/value grid)."""
+    rows = [l.strip() for l in text.splitlines() if l.strip().startswith("|")]
+    if len(rows) < 2:
+        return ""
+    def cells(row: str) -> list[str]:
+        return [c.strip() for c in row.strip("|").split("|")]
+    head, sep, *body = rows
+    if not re.match(r"^[\s:|-]+$", sep):
+        body = [sep] + body
+    head_cells = cells(head)
+    out = ["<table>"]
+    if any(head_cells):
+        out.append("<tr>" + "".join(f"<th>{_md_inline(c)}</th>" for c in head_cells) + "</tr>")
+    for r in body:
+        out.append("<tr>" + "".join(f"<td>{_md_inline(c)}</td>" for c in cells(r)) + "</tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
+def _md_paragraphs_html(text: str) -> str:
+    """Plain prose paragraphs (blank-line separated), skipping any pipe-table
+    or list lines mixed into the same block - those are rendered by the
+    dedicated helpers above instead."""
+    paras, cur = [], []
+    for line in text.splitlines():
+        if not line.strip():
+            if cur:
+                paras.append(" ".join(cur))
+                cur = []
+            continue
+        if line.strip().startswith("|") or re.match(r"^(\d+\.|-)\s", line.strip()):
+            continue
+        cur.append(line.strip())
+    if cur:
+        paras.append(" ".join(cur))
+    return "".join(f"<p>{_md_inline(p)}</p>" for p in paras)
+
+
+def _fix_links_for_pages(html: str, anchor_file: str | None = None) -> str:
+    """A relative link to a repository markdown file renders as raw,
+    unformatted text on static Pages hosting - GitHub's own renderer is what
+    everyone actually reading this site is used to, so every such link is
+    repointed there. `anchor_file` supplies the source document for a bare
+    `#anchor` link extracted out of context (FAILURES.md's own headings,
+    quoted here without the rest of the file around them)."""
+    def repl(m):
+        href = m.group(1)
+        if href.startswith("http"):
+            return m.group(0)
+        if href.startswith("#"):
+            if anchor_file:
+                return (f'href="https://github.com/adarshcod30/Orbweaver/'
+                        f'blob/main/{anchor_file}{href}"')
+            return m.group(0)
+        path, _, anchor = href.partition("#")
+        gh = f"https://github.com/adarshcod30/Orbweaver/blob/main/{path}"
+        return f'href="{gh}#{anchor}"' if anchor else f'href="{gh}"'
+    return re.sub(r'href="([^"]+)"', repl, html)
+
+
 def write_index(cfg, ring: dict | None, score: dict | None) -> Path | None:
     """A landing page for the published docs.
 
-    Static hosting cannot render `docs/results.md`, so this is the front door:
-    the headline numbers, a reading order, and links to the case files and the
-    figures. Like everything else here it is generated, so it cannot drift from
-    the run.
+    Static hosting cannot render markdown, so this is the whole story for
+    someone who will never clone the repository: the problem, why this
+    dataset, how the pipeline works, every result including the negative
+    ones, what broke, and the research it stands on. The prose is quoted
+    directly out of README.md and FAILURES.md rather than retyped, so this
+    page cannot say something different from what the repository says.
     """
     from orbweaver.console.demo import bundle_path
 
     proc = cfg.abs_path(cfg.paths.processed)
+    root = cfg.abs_path(".")
 
     def art(name):
         f = proc / name
@@ -2596,6 +2723,24 @@ def write_index(cfg, ring: dict | None, score: dict | None) -> Path | None:
     cell = ((ring or {}).get("grid", {}) or {}).get(
         f"tau={best.get('tau')},lambda={best.get('lambda')}", {})
     base = (ring or {}).get("base_rate_among_labelled")
+    dest = root / "docs" / "index.html"
+
+    readme_path = root / "README.md"
+    if not cell or not readme_path.exists():
+        dest.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orbweaver — not yet built</title><style>{CASE_CSS}</style></head><body>
+<div class="wrap"><h1>Orbweaver</h1>
+<div class="empty-state"><b>No run to report yet.</b> This page is generated
+from <code>data/processed/</code> by <code>make report</code>, which needs
+<code>make reproduce</code> (or at least <code>make rings</code>) to have run
+first. Source: <a href="https://github.com/adarshcod30/Orbweaver">
+github.com/adarshcod30/Orbweaver</a>.</div></div></body></html>""")
+        return dest
+
+    readme = readme_path.read_text()
+    failures_path = root / "FAILURES.md"
+    failures = failures_path.read_text() if failures_path.exists() else ""
 
     stats = []
     if cell:
@@ -2613,59 +2758,322 @@ def write_index(cfg, ring: dict | None, score: dict | None) -> Path | None:
         if b:
             stats.append((f"₹{b['fraud_value_stopped_inr']:,.0f}",
                           "stopped by one analyst, one hour a night"))
-
     bars = "".join(f'<div class="stat"><b>{esc(v)}</b><span>{esc(t)}</span></div>'
                    for v, t in stats)
+
     bundle = bundle_path(cfg) / "meta.json"
     mb = (f"{json.loads(bundle.read_text())['bytes'] / 1e6:.2f} MB"
           if bundle.exists() else None)
 
-    dest = cfg.abs_path(".") / "docs" / "index.html"
-    dest.write_text(f"""<!doctype html><meta charset="utf-8">
-<title>Orbweaver — finding coordinated abuse rings</title>
+    # --- prose quoted straight out of README.md, formatted, links repointed ---
+    one_minute = _fix_links_for_pages(_md_paragraphs_html(
+        re.search(r"<!-- oneminute:start -->(.*?)<!-- oneminute:end -->",
+                  readme, re.S).group(1))) if "<!-- oneminute:start -->" in readme else ""
+
+    problem_html = _fix_links_for_pages(
+        _md_paragraphs_html(_md_section(readme, "## The problem")))
+
+    how_it_works_raw = _md_section(readme, "## How it works")
+    how_it_works_raw = re.sub(r"```mermaid.*?```", "", how_it_works_raw, flags=re.S)
+    how_intro, _, how_list = how_it_works_raw.partition("\n1. ")
+    how_intro_html = _fix_links_for_pages(_md_paragraphs_html(how_intro))
+    how_list_html = _md_list_html("1. " + how_list, ordered=True) if how_list else ""
+
+    results_section = _md_section(readme, "## Results")
+    table_md = re.search(r"<!-- results:start -->(.*?)<!-- results:end -->",
+                         results_section, re.S)
+    results_table_html = _md_table_html(table_md.group(1)) if table_md else ""
+    _, _, findings_raw = results_section.partition("thirteen findings, including the four "
+                                                    "that did not work:")
+    findings_html = _md_list_html(findings_raw, ordered=True)
+
+    caveats_html = _md_list_html(
+        _md_section(readme, "## What these numbers do not prove"), ordered=False)
+    caveats_html = _fix_links_for_pages(caveats_html)
+
+    ml_html = _fix_links_for_pages(_md_paragraphs_html(
+        _md_section(readme, "## Where machine learning is used, and where it is not")))
+
+    five_that_mattered = _fix_links_for_pages(
+        _md_list_html(_md_section(failures, "### The five that mattered"), ordered=False),
+        anchor_file="FAILURES.md") if failures else ""
+
+    citations_html = _fix_links_for_pages(
+        _md_list_html(_md_section(readme, "## Related work and citations"), ordered=False))
+
+    repo_map_html = _md_table_html(_md_section(readme, "## Repository map"))
+
+    # --- one real interactive chart: the same grid docs/results.md reads,
+    # rendered client-side from embedded JSON, with a table fallback so it
+    # means the same thing with JavaScript off. ---
+    tau = best.get("tau")
+    lam_rows = sorted(
+        ({"lambda": r["lambda"], "precision": r["ring_precision"],
+          "cost": r.get("normal_flagged_per_fraud_caught")}
+         for r in (ring or {}).get("grid", {}).values()
+         if r.get("tau") == tau and r.get("ring_precision") is not None),
+        key=lambda r: r["lambda"])
+    chart_json = json.dumps(lam_rows)
+    chart_table = ("<table><tr><th>λ</th><th class=\"num\">ring precision</th>"
+                   "<th class=\"num\">real customers per catch</th></tr>" +
+                   "".join(f'<tr><td>{r["lambda"]}</td><td class="num">{r["precision"]}</td>'
+                           f'<td class="num">{esc(r["cost"])}</td></tr>' for r in lam_rows) +
+                   "</table>")
+
+    # --- figures: every one in docs/figures/, in the same order and with the
+    # same captions docs/results.md uses - one source of captions, not two. ---
+    figs_dir = root / "docs" / "figures"
+    fig_files = sorted(figs_dir.glob("*.png")) if figs_dir.exists() else []
+    figures_html = "".join(
+        f'<figure><img src="figures/{f.name}" loading="lazy" '
+        f'alt="{esc(FIGURE_CAPTIONS.get(f.stem, (f.stem.replace("_", " "), ""))[0])}">'
+        f'<figcaption>{esc(FIGURE_CAPTIONS.get(f.stem, ("", None))[1] or "")}</figcaption>'
+        f'</figure>' for f in fig_files)
+
+    n_findings = table_md and len(re.findall(r"^\d+\. ", findings_raw, re.M))
+
+    dest.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<style>{CASE_CSS}</style>
+<title>Orbweaver — finding coordinated abuse rings</title>
+<meta name="description" content="Finding coordinated promotion-abuse rings in
+transaction graphs, and reporting what it costs to be wrong about them.">
+<meta property="og:title" content="Orbweaver">
+<meta property="og:description" content="Finding coordinated promotion-abuse
+rings in transaction graphs, and reporting what it costs to be wrong about
+them. {esc(cell.get('ring_precision'))} ring precision against a base rate of
+{esc(base)}.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://raw.githubusercontent.com/adarshcod30/Orbweaver/main/docs/figures/headline_precision_vs_cost.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>{CASE_CSS}
+.flow{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0}}
+.fstep{{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;
+padding:9px 13px;font-size:13px;text-align:center;line-height:1.3}}
+.fstep small{{color:var(--muted);font-size:11px}}
+.fstep.accent{{background:var(--accent);color:#fff;border-color:var(--accent)}}
+.farrow{{color:var(--muted);font-size:16px}}
+.toc{{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;margin:0 0 28px}}
+.toc a{{color:var(--muted)}}
+figure{{margin:0 0 22px;padding:0}}
+figure img{{width:100%;border:1px solid var(--line);border-radius:8px;
+background:var(--surface)}}
+figcaption{{color:var(--muted);font-size:12.5px;margin-top:6px}}
+.figuregrid{{display:grid;grid-template-columns:1fr;gap:0}}
+@media (min-width:760px){{.figuregrid{{grid-template-columns:1fr 1fr;gap:0 24px}}}}
+#lambda-chart svg circle{{cursor:pointer}}
+#lambda-chart svg circle:focus-visible{{stroke:var(--ink);stroke-width:3px;outline:none}}
+h2{{scroll-margin-top:16px;border-top:1px solid var(--line);padding-top:32px;
+margin-top:36px}}
+h2:first-of-type{{border-top:none;padding-top:0;margin-top:0}}
+</style></head><body>
 <div class="wrap">
 <h1>Orbweaver</h1>
 <p class="sub"><em>The one that feels the whole web.</em> Finding coordinated
-promotion-abuse rings in transaction graphs — and reporting what it costs to be
-wrong about them.</p>
+promotion-abuse rings in transaction graphs — and reporting what it costs to
+be wrong about them. Built for the Razorpay AI Buildathon, Track 02 — this is
+my submission to their buildathon, not a Razorpay product.</p>
 <div class="bar">{bars}</div>
-<div class="assume">Every number on these pages is produced by
-<code>make reproduce</code>; none is typed in by hand. Rupee figures use stated
-assumptions, because the dataset ships no monetary amounts, so they rank options
-against each other and mean nothing in absolute terms.</div>
+<div class="assume">Every number on this page is produced by
+<code>make reproduce</code>; none is typed in by hand — this page is quoted,
+not retyped, from <a href="https://github.com/adarshcod30/Orbweaver/blob/main/README.md">README.md</a>.
+Rupee figures use stated assumptions, because the dataset ships no monetary
+amounts, so they rank options against each other and mean nothing absolute.</div>
 
-<div class="card">
-<h2>If you have ten minutes</h2>
-<ol>
-<li><a href="https://github.com/adarshcod30/Orbweaver#the-problem">The problem</a>
- — why a ring is invisible to a per-order scorer.</li>
-<li><a href="case-files.html">The case files</a> — what an analyst is actually
- handed, one card per ring, with the evidence and the recommended action.</li>
-<li><a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md">What
- broke</a> — the honest log. It is the file I would read first.</li>
-<li><a href="results.md">The full results</a> — thirteen investigations, four of
- which came back negative and are reported as such.</li>
-</ol>
+<p class="toc"><a href="#the-problem">the problem</a> ·
+<a href="#why-this-dataset">why this dataset</a> ·
+<a href="#how-it-works">how it works</a> ·
+<a href="#results">results</a> ·
+<a href="#what-these-numbers-do-not-prove">what these numbers do not prove</a> ·
+<a href="#what-broke">what broke</a> ·
+<a href="#figures">figures</a> ·
+<a href="#research-foundation">research foundation</a> ·
+<a href="#try-it">try it</a></p>
+
+<div class="card"><h2 id="the-problem">The problem</h2>{problem_html}</div>
+
+<div class="card"><h2 id="why-this-dataset">Why this dataset</h2>
+<p>PPA is the only public, labelled promotion-abuse-ring dataset I could find
+— not the best one, the only one — and I never modified it, because a
+detector's numbers are only honest if the ground truth they are checked
+against is real. The full case for why this is still the right dataset to
+have started from, what its own paper claims that the release does not
+support, and how the hostel test and three unrelated datasets test the
+method past PPA, is in
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/why-this-data.md">docs/why-this-data.md</a>.</p>
 </div>
 
-<div class="card">
-<h2>Pages here</h2>
+<div class="card"><h2 id="how-it-works">How it works</h2>
+{how_intro_html}
+<div class="flow" role="img" aria-label="orders flow into a multi-relation
+graph, into account scoring, into pruning, into peeling, into ring plus
+evidence, into a review policy. Nights one through four replay this whole
+loop, anchored so a case survives the night.">
+<div class="fstep">orders</div><div class="farrow">→</div>
+<div class="fstep">graph<br><small>rarity × relation weight</small></div><div class="farrow">→</div>
+<div class="fstep">scorer<br><small>the one learned step</small></div><div class="farrow">→</div>
+<div class="fstep">prune<br><small>score cut-off τ</small></div><div class="farrow">→</div>
+<div class="fstep">peel<br><small>densest-subgraph, proved bound</small></div><div class="farrow">→</div>
+<div class="fstep">ring + evidence</div><div class="farrow">→</div>
+<div class="fstep accent">policy</div>
+</div>
+<p class="note">Replayed one night at a time for the nightly numbers below:
+rings are anchored around fixed accounts so a case found tonight is
+recognisably the same case tomorrow, not a fresh one every morning.</p>
+{how_list_html}
+</div>
+
+<div class="card"><h2 id="results">Results</h2>
+<p>All {esc(n_findings) or 'thirteen'} investigations this project ran,
+including the four that came back negative, generated by
+<code>make reproduce</code> from the run in <code>data/processed/</code>:</p>
+{results_table_html}
+{findings_html}
+</div>
+
+<div class="card"><h2 id="lambda-chart-h">How much the model's opinion matters, interactively</h2>
+<p class="sub">At the score cut-off this project uses (τ = {esc(tau)}), this is
+ring precision as λ moves the peeling objective from pure structure
+(λ = 0) toward weighing the account scorer's opinion more heavily. The same
+numbers are in the row above and in
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md#ring-precision-across-the-full-cut-off-tau-by-structure-weight-lambda-grid">docs/results.md</a>.</p>
+<div id="lambda-chart" aria-label="Ring precision against lambda, a line chart">
+<noscript>JavaScript is off — see the table below.</noscript>
+</div>
+<script id="chart-data" type="application/json">{chart_json}</script>
+<details class="chart-table"><summary>View as a table</summary>{chart_table}</details>
+</div>
+
+<div class="card"><h2 id="what-these-numbers-do-not-prove">What these numbers do not prove</h2>
+{caveats_html}
+</div>
+
+<div class="card"><h2 id="where-machine-learning-is-used">Where machine learning is used, and where it is not</h2>
+{ml_html}
+</div>
+
+<div class="card"><h2 id="what-broke">What broke</h2>
+<p class="sub">The five that mattered, out of
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/FAILURES.md">FAILURES.md</a>'s
+full, dated log:</p>
+{five_that_mattered}
+</div>
+
+<div class="card"><h2 id="figures">Figures</h2>
+<p class="sub">All {esc(len(fig_files))} of them, regenerated by
+<code>make report</code>; the exact captions in
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/docs/results.md">docs/results.md</a>.</p>
+<div class="figuregrid">{figures_html}</div>
+</div>
+
+<div class="card"><h2 id="research-foundation">Research foundation</h2>
+{citations_html}
+</div>
+
+<div class="card"><h2 id="repository-map">Repository map</h2>
+{repo_map_html}
+</div>
+
+<div class="card"><h2 id="try-it">Try it</h2>
 <ul>
-<li><a href="case-files.html">case-files.html</a> — the review queue as a
- standalone page, no server needed.</li>
-<li><a href="results.md">results.md</a> — every table and figure.</li>
-<li><a href="architecture.md">architecture.md</a> · <a href="data.md">data.md</a>
- · <a href="design-decisions.md">design-decisions.md</a>
- · <a href="threat-model.md">threat-model.md</a></li>
+<li><a href="https://orbweaver-adarshcod30s-projects.vercel.app">Live console</a>
+ — the review queue, one card per ring, a nightly replay view and an
+ account lookup, running from the demo bundle.</li>
+<li><a href="case-files.html">case-files.html</a> — the same review queue as
+ a standalone page, no server needed.</li>
+<li><a href="https://github.com/adarshcod30/Orbweaver">Source</a>, and
+ running it locally:
+<pre><code>git clone https://github.com/adarshcod30/Orbweaver
+cd Orbweaver
+pip install -r requirements-demo.txt
+make console      # http://127.0.0.1:8000, no dataset needed</code></pre></li>
 </ul>
-{f'<p class="note">The repository also carries a {mb} demo bundle, so the live console runs from a clone with no dataset at all.</p>' if mb else ''}
+{f'<p class="note">The repository carries a {mb} demo bundle, so the live console and a fresh clone both run with no dataset present at all.</p>' if mb else ''}
 </div>
 
-<p class="sub">Built for the Razorpay AI Buildathon, Track 02 ·
+<p class="sub">MIT-licensed. Detection only —
+<a href="https://github.com/adarshcod30/Orbweaver/blob/main/ETHICS.md">ETHICS.md</a>
+sets the boundary in six lines. Built for the Razorpay AI Buildathon, Track 02 ·
 <a href="https://github.com/adarshcod30/Orbweaver">source</a></p>
-</div>""")
+</div>
+<script>
+(function(){{
+  var dataEl = document.getElementById('chart-data');
+  var host = document.getElementById('lambda-chart');
+  if (!dataEl || !host) return;
+  var data;
+  try {{ data = JSON.parse(dataEl.textContent); }} catch (e) {{ return; }}
+  if (!data || !data.length) return;
+  var w = 640, h = 260, pad = {{l: 42, r: 16, t: 14, b: 30}};
+  var xs = data.map(function(d){{return d.lambda;}});
+  var ys = data.map(function(d){{return d.precision;}});
+  var xmin = Math.min.apply(null, xs), xmax = Math.max.apply(null, xs);
+  var ymin = 0, ymax = Math.max.apply(null, ys) * 1.15;
+  function X(x) {{ return pad.l + (xmax > xmin ? (x - xmin) / (xmax - xmin) : 0.5) * (w - pad.l - pad.r); }}
+  function Y(y) {{ return h - pad.b - (ymax > ymin ? (y - ymin) / (ymax - ymin) : 0) * (h - pad.t - pad.b); }}
+  var svgNS = 'http://www.w3.org/2000/svg';
+  var svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Ring precision rises with lambda at this score cut-off');
+  [0, 0.25, 0.5, 0.75, 1].forEach(function(f){{
+    var y = pad.t + f * (h - pad.t - pad.b);
+    var l = document.createElementNS(svgNS, 'line');
+    l.setAttribute('x1', pad.l); l.setAttribute('x2', w - pad.r);
+    l.setAttribute('y1', y); l.setAttribute('y2', y);
+    l.setAttribute('stroke', 'var(--line)'); l.setAttribute('stroke-width', '1');
+    svg.appendChild(l);
+    var t = document.createElementNS(svgNS, 'text');
+    t.setAttribute('x', 4); t.setAttribute('y', y + 4);
+    t.setAttribute('font-size', '10'); t.setAttribute('fill', 'var(--muted)');
+    t.textContent = (ymax - (ymax - ymin) * f).toFixed(2);
+    svg.appendChild(t);
+  }});
+  var path = data.map(function(d, i){{
+    return (i ? 'L' : 'M') + X(d.lambda) + ',' + Y(d.precision);
+  }}).join(' ');
+  var p = document.createElementNS(svgNS, 'path');
+  p.setAttribute('d', path); p.setAttribute('fill', 'none');
+  p.setAttribute('stroke', 'var(--accent)'); p.setAttribute('stroke-width', '2.5');
+  svg.appendChild(p);
+  data.forEach(function(d){{
+    var c = document.createElementNS(svgNS, 'circle');
+    c.setAttribute('cx', X(d.lambda)); c.setAttribute('cy', Y(d.precision));
+    c.setAttribute('r', 5.5); c.setAttribute('fill', 'var(--accent)');
+    c.setAttribute('tabindex', '0');
+    c.setAttribute('aria-label', 'lambda ' + d.lambda + ', ring precision ' + d.precision);
+    var t = document.createElementNS(svgNS, 'title');
+    t.textContent = 'λ=' + d.lambda + '  precision ' + d.precision;
+    c.appendChild(t);
+    var x = document.createElementNS(svgNS, 'text');
+    x.setAttribute('x', X(d.lambda)); x.setAttribute('y', h - 8);
+    x.setAttribute('font-size', '10'); x.setAttribute('fill', 'var(--muted)');
+    x.setAttribute('text-anchor', 'middle');
+    x.textContent = d.lambda;
+    svg.appendChild(x);
+    svg.appendChild(c);
+  }});
+  host.textContent = '';
+  host.appendChild(svg);
+}})();
+</script>
+</body></html>""")
+    return dest
+
+
+def write_404(cfg) -> Path:
+    """GitHub Pages serves this for any path under the site that does not
+    exist - the alternative is its own generic, off-brand error page."""
+    dest = cfg.abs_path(".") / "docs" / "404.html"
+    dest.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orbweaver — page not found</title>
+<style>{CASE_CSS}</style></head><body>
+<div class="wrap"><h1>Orbweaver</h1>
+<div class="empty-state"><b>There is no page here.</b> Try the
+<a href="/Orbweaver/">landing page</a>, the
+<a href="/Orbweaver/case-files.html">case files</a>, or the
+<a href="https://github.com/adarshcod30/Orbweaver">repository</a> itself.</div>
+</div></body></html>""")
     return dest
 
 
@@ -3022,14 +3430,18 @@ def main() -> None:
 
     dest = write_results(cfg, score, ring, weights, figures)
     print(f"wrote {dest}")
-    idx = write_index(cfg, ring, score)
-    if idx:
-        print(f"wrote {idx}")
     vj = proc / "view_comparison.json"
     rd = update_readme(cfg, score, ring,
                        json.loads(vj.read_text()) if vj.exists() else None)
     if rd:
         print(f"wrote {rd}")
+    # After update_readme, not before: the landing page quotes README
+    # sections verbatim (the findings list, the caveats) rather than
+    # retyping them, so it has to read the file after this run's rewrite.
+    idx = write_index(cfg, ring, score)
+    if idx:
+        print(f"wrote {idx}")
+    print(f"wrote {write_404(cfg)}")
     for f in figures:
         print(f"wrote {f}")
 
