@@ -81,6 +81,33 @@ def artefact(name: str) -> dict:
     return json.loads(path.read_text()) if path.exists() else {}
 
 
+def deep_pass_note() -> str:
+    """The bundle carries the deep pass - 200 rings rather than the headline
+    25 - because a queue you can only click twenty-five times is not a queue.
+    Its precision is therefore lower than the headline, and a reader comparing
+    the two surfaces deserves to be told why rather than left to wonder."""
+    if not demo_mode():
+        return ""
+    from orbweaver.console.demo import bundle_path
+    meta_path = bundle_path(load_config()) / "meta.json"
+    if not meta_path.exists():
+        return ""
+    meta = json.loads(meta_path.read_text())
+    if meta.get("rings_from") != "ring_report_deep.json":
+        return ""
+    h = meta.get("headline_pass") or {}
+    if h.get("ring_precision") is None:
+        return ""
+    return (f'<div class="assume"><strong>This is the deep pass.</strong> The '
+            f'queue below is the same operating point taken deeper - every ring '
+            f'the extractor returns, not just the top {esc(h.get("n_rings"))} the '
+            f'headline reports. Precision is {esc((load_report().get("best_cell") or {}).get("ring_precision"))} '
+            f'here against {esc(h.get("ring_precision"))} for the headline pass, '
+            f'because a review queue trades precision for depth. Both are '
+            f'published in <a href="{REPO_URL}/blob/main/docs/results.md">'
+            f'docs/results.md</a>.</div>')
+
+
 DEMO_BANNER = (
     '<div class="assume"><strong>This is the demo bundle.</strong> The numbers, '
     'rings and evidence are the real ones from a full run, but the graph itself '
@@ -234,6 +261,7 @@ against a base rate of {esc(report.get('base_rate_among_labelled'))}. A ring is
 a candidate — several accounts a shared entity ties together, dense enough to
 look coordinated — not a verdict.</p>
 {DEMO_BANNER if demo_mode() else ""}
+{deep_pass_note()}
 <div class="bar">{bar}</div>
 <div class="assume">Leads for a human to review, not verdicts. Rupee figures use
 an assumed value — this dataset ships no monetary amounts.</div>

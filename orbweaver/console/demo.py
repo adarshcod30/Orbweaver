@@ -112,12 +112,14 @@ def build(cfg: Config | None = None) -> dict:
 
     ring_of = np.full(n, -1, dtype=np.int32)
     rings_payload = {}
+    rings_source = None
     for name in ("ring_report_deep.json", "ring_report.json"):
         p = proc / name
         if not p.exists():
             continue
         payload = json.loads(p.read_text())
         rings_payload = payload
+        rings_source = name
         for i, case in enumerate(payload.get("case_files", [])):
             # The full membership, not the display sample - otherwise every
             # member past the twenty-fifth is told it is in no ring.
@@ -184,6 +186,15 @@ def build(cfg: Config | None = None) -> dict:
             trimmed["early_warning"] = {k: v for k, v in ew.items() if k != "by_night"}
         (dest / "offers.json").write_text(json.dumps(trimmed, separators=(",", ":"), default=float))
 
+    headline = {}
+    hp = proc / "ring_report.json"
+    if hp.exists():
+        h = json.loads(hp.read_text()).get("best_cell") or {}
+        hc = (json.loads(hp.read_text()).get("grid") or {}).get(
+            f"tau={h.get('tau')},lambda={h.get('lambda')}", {})
+        headline = {"ring_precision": h.get("ring_precision"),
+                    "n_rings": hc.get("n_rings")}
+
     files = sorted(f for f in dest.iterdir() if f.is_file() and f.name != "meta.json")
     total = sum(f.stat().st_size for f in files)
     anchored_members = int(np.isin(keep, must_have).sum())
@@ -195,6 +206,8 @@ def build(cfg: Config | None = None) -> dict:
         "files": {f.name: f.stat().st_size for f in files},
         "bytes": int(total),
         "limit_bytes": MAX_BYTES,
+        "rings_from": rings_source,
+        "headline_pass": headline,
         "note": ("Precomputed results, so anyone can look at the console without the "
                  "4 GB dataset. The graph itself is not in here - /check serves stored "
                  "neighbour counts rather than computing a ring live."),

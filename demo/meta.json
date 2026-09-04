@@ -14,5 +14,10 @@
   },
   "bytes": 1690939,
   "limit_bytes": 41943040,
+  "rings_from": "ring_report_deep.json",
+  "headline_pass": {
+    "ring_precision": 0.7292,
+    "n_rings": 25
+  },
   "note": "Precomputed results, so anyone can look at the console without the 4 GB dataset. The graph itself is not in here - /check serves stored neighbour counts rather than computing a ring live."
 }
