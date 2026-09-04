@@ -1630,3 +1630,48 @@ cannot - the same lesson the stale hostel-test number just taught two entries
 above this one, from a different direction. I have now looked at the Actions
 tab; I should have made a habit of it from the first commit that added a
 workflow to fail in, not the last day of the project.
+
+---
+
+## 4 September — the fix for a false positive only ever worked by accident
+
+**What broke:** fixing the missing test dependency did not turn the badge
+green. The very next run failed at a different step - the voice check -
+on `orbweaver/console/app.py:92`, an ordinary CSS declaration:
+`cursor:pointer`.
+
+**What I believed:** that this was already handled. The script wraps the
+property's own name in a word-boundary escape specifically so that a bare
+mention of an unrelated coding tool with the same name would not also match
+this ordinary style declaration, with a comment above it saying exactly
+that, and it has passed on every local run I have ever made.
+
+**Why that was wrong:** the word-boundary escape (`\b` in the pattern) is a
+GNU regex extension, not something POSIX extended regular expressions
+define. macOS's `git grep` does not support it - not "supports it
+differently," simply does not treat it as a metacharacter at all - so the
+guarded pattern silently failed to match anything on this machine,
+`cursor:pointer` passed by an accident of the pattern never actually
+engaging, and I read that as the guard working. GNU grep, which Linux CI
+uses, does implement word-boundary escapes properly, and one sits on both
+sides of that property's name inside `cursor:pointer` regardless - a colon
+is exactly as much a non-word character as a space is. The original design
+was never going to work on a platform where the escape behaves as
+documented; a word-boundary anchor was the wrong tool from the start,
+because the goal was never "is this a whole word," it was "is this specific
+whole word followed by this specific other whole word."
+
+**What fixed it:** matching the property's name on its own, then filtering
+`cursor:pointer` (and `cursor: pointer`) back out of the results as a named,
+known-benign exception, rather than trying to build a single pattern clever
+enough to exclude it up front. A filter step is the same plain substring
+match on every platform; there is nothing left for a regex dialect to
+disagree about.
+
+**What I take from it:** a check that has "always passed" on the only
+machine it has ever run on is not evidence the check is correct - it is
+evidence the check has only ever run in one environment, and I had been
+treating three days of local green as if it were three days of CI green
+without the two ever actually being the same claim. Between this and the
+missing dependency, both bugs were invisible from where I was standing and
+both were sitting in the one place I had not looked.
