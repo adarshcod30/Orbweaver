@@ -40,6 +40,7 @@ A group running many accounts through one delivery-app promotion looks fine orde
 
 **Contents** &nbsp;
 [Overview](#overview) ·
+[What it is](#what-this-is) ·
 [Features](#key-features) ·
 [Stack](#tech-stack) ·
 [Architecture](#system-architecture) ·
@@ -49,6 +50,7 @@ A group running many accounts through one delivery-app promotion looks fine orde
 [Caveats](#what-these-numbers-do-not-prove) ·
 [ML boundary](#where-machine-learning-is-used-and-where-it-is-not) ·
 [Failures](#what-broke) ·
+[In production](#running-this-inside-a-payment-stack) ·
 [Deployment](#deployment--infrastructure) ·
 [Structure](#project-structure) ·
 [Start](#getting-started) ·
