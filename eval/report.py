@@ -3543,6 +3543,138 @@ def _one_minute_block(cfg, cell: dict, base, proc: Path) -> list[str]:
     return M
 
 
+def _what_this_is_block(score, cell, unpruned) -> list[str]:
+    """The three-row table under "What this is": what each half of the pipeline
+    achieves on its own, and what the two achieve in order.
+
+    The argument the section makes - that neither half works alone - is only
+    worth making if the three numbers come from the same run as everything
+    else, so they are read here rather than quoted from the section above.
+    """
+    start, end = "<!-- whatitis:start -->", "<!-- whatitis:end -->"
+    M = [start, ""]
+    if cell and unpruned and score:
+        b = score["results"]["test_heldout__labelled_only"]
+        M.append("| what decides membership | measured | vs chance |")
+        M.append("|---|---:|---:|")
+        M.append(f"| Structure alone — peel the raw graph, no score cut-off | "
+                 f"{unpruned.get('ring_precision')} ring precision | "
+                 f"{unpruned.get('precision_lift_over_base')}× |")
+        M.append(f"| The model alone — held-out accounts | {b['auprc']} AUPRC | "
+                 f"{b['auprc_lift_over_random']}× |")
+        M.append(f"| **Score, prune, then peel** | "
+                 f"**{cell.get('ring_precision')} ring precision** | "
+                 f"**{cell.get('precision_lift_over_base')}×** |")
+        M.append("")
+        M.append("Order is what does the work. Peeled first, the densest "
+                 "subgraphs are large ordinary communities — people who "
+                 "happened to use the same promotion — and the queue lands "
+                 "below chance.")
+    M += ["", end]
+    return M
+
+
+def _integration_block(cfg, proc: Path, cell) -> list[str]:
+    """What running this against a live payment stack would take, and the
+    limits that would bite first - every figure from an artefact.
+
+    Nothing here is a plan for work not done: each row is a measurement this
+    project already published, restated in the terms an integration would be
+    argued in.
+    """
+    start, end = "<!-- integration:start -->", "<!-- integration:end -->"
+
+    def art(name):
+        f = proc / name
+        return json.loads(f.read_text()) if f.exists() else None
+
+    M = [start, ""]
+    rows: list[str] = []
+
+    lb = art("label_budget.json")
+    if lb and (lb.get("knee") or {}).get("beats_base_rate_at"):
+        k = lb["knee"]["beats_base_rate_at"]
+        rows.append(f"| **Labels needed to start** | {int(k['labelled_accounts']):,} "
+                    f"confirmed accounts — {k['fraction']:.1%} of the training "
+                    f"pool — already beats the base rate |")
+
+    rc = art("ring_context.json")
+    if rc and rc.get("check_latency"):
+        cl = rc["check_latency"]
+        rows.append(f"| **Online path** | `/check` answers in {cl['p50_ms']} ms at "
+                    f"the median and {cl['p95_ms']} ms at p95 — a read of the "
+                    f"nightly pass, not a graph computation |")
+
+    an = art("anchored.json")
+    if an and (an.get("summary") or {}).get("persistence_at_0.3"):
+        p = an["summary"]["persistence_at_0.3"].get(
+            "share_of_final_rings_with_a_predecessor")
+        if p is not None:
+            rows.append(f"| **Nightly path** | anchored extraction, so "
+                        f"{p:.0%} of tonight's rings are a case that was already "
+                        f"open yesterday rather than a fresh queue every morning |")
+
+    ie = art("ieee_cis.json")
+    if ie and ie.get("rings"):
+        r = ie["rings"]
+        rows.append(f"| **On a card processor's graph** | the same pipeline, "
+                    f"unchanged: {r['ring_precision']} ring precision at "
+                    f"{r['precision_lift_over_base']}× the base rate, at "
+                    f"{r['normal_flagged_per_fraud_caught']} good cards flagged "
+                    f"per fraudulent one |")
+
+    mv = art("merchant_view.json")
+    arms = ((mv or {}).get("datasets", {}).get("yelpchi", {}) or {}).get("arms")
+    if arms and "platform" in arms and "merchant" in arms:
+        p, m = arms["platform"], arms["merchant"]
+        rows.append(f"| **What one merchant cannot see** | the platform arm "
+                    f"surfaces {p['accounts_in_rings']:,} accounts at "
+                    f"{p['ring_precision']} precision; drop the relation that "
+                    f"spans businesses and the merchant arm surfaces "
+                    f"{m['accounts_in_rings']:,} at {m['ring_precision']} |")
+
+    if rows:
+        M.append("| | |")
+        M.append("|---|---|")
+        M += rows
+        M.append("")
+
+    # the limits, in the order they would bite
+    lim = []
+    ht = art("hostel_test.json")
+    if ht and ie and ie.get("address_cluster_test"):
+        ac = ie["address_cluster_test"]
+        lim.append(f"**The address relation is the risk.** It is at once the "
+                   f"most informative edge and the thing that legitimately ties "
+                   f"a building together. On delivery data the hostel test "
+                   f"touches {ht['clusters_with_a_member_in_a_ring']} of "
+                   f"{ht['clusters_found']:,} legitimate co-located groups; on "
+                   f"card data its apartment analogue touches "
+                   f"{ac['clusters_touched']} of {ac['clusters_found']}. That "
+                   f"test has to be rerun on whatever data this meets next.")
+
+    fr = art("fragmentation.json")
+    if fr and fr.get("results"):
+        r = fr["results"]
+        if "intact" in r and "cells_of_3" in r:
+            lim.append(f"**An adaptive attacker degrades it.** Splitting every "
+                       f"ring into cells of {r['cells_of_3']['cell_size']} takes "
+                       f"ring precision from {r['intact']['ring_precision']} to "
+                       f"{r['cells_of_3']['ring_precision']}.")
+
+    if cell and cell.get("ring_recall") is not None:
+        lim.append(f"**It is a queue, not a net.** Ring recall is "
+                   f"{cell['ring_recall']} by construction — this surfaces a few "
+                   f"hundred accounts worth reviewing, not the population.")
+
+    if lim:
+        M.append("**What it does not solve.**\n")
+        M += [f"- {x}" for x in lim]
+
+    M += ["", end]
+    return M
+
+
 def update_readme(cfg, score, ring, views) -> Path | None:
     """Fill the generated blocks in README.md.
 
@@ -3564,12 +3696,20 @@ def update_readme(cfg, score, ring, views) -> Path | None:
     base = ring.get("base_rate_among_labelled")
 
     proc = cfg.abs_path(cfg.paths.processed)
-    om_start, om_end = "<!-- oneminute:start -->", "<!-- oneminute:end -->"
-    if om_start in text and om_end in text:
-        om_head, om_rest = text.split(om_start, 1)
-        _, om_tail = om_rest.split(om_end, 1)
-        M = _one_minute_block(cfg, cell, base, proc)
-        text = om_head + "\n".join(M) + om_tail
+
+    def splice(text: str, marker: str, lines: list[str]) -> str:
+        """Replace one marked block, leaving the file alone if it has no
+        such block - so adding a section to README.md is the only edit its
+        author has to make by hand."""
+        s, e = f"<!-- {marker}:start -->", f"<!-- {marker}:end -->"
+        if s not in text or e not in text:
+            return text
+        head, rest = text.split(s, 1)
+        return head + "\n".join(lines) + rest.split(e, 1)[1]
+
+    text = splice(text, "oneminute", _one_minute_block(cfg, cell, base, proc))
+    text = splice(text, "whatitis", _what_this_is_block(score, cell, unpruned))
+    text = splice(text, "integration", _integration_block(cfg, proc, cell))
 
     L = [start, ""]
     L.append("| | |")

@@ -82,6 +82,26 @@ cost of being wrong.
 **Keywords:** `fraud-detection` `graph-algorithms` `densest-subgraph`
 `anomaly-detection` `payments` `fintech` `xgboost` `python` `reproducible-research`
 
+## What this is
+
+A detection **pipeline**, not a model. The only learned component scores
+accounts; a deterministic densest-subgraph peeling with a proved ½-approximation
+bound decides who is in a ring. A ring is not a property of any single
+transaction — which is why per-transaction scoring cannot see one, and why the
+number quoted throughout is ring precision rather than accuracy or AUC.
+
+<!-- whatitis:start -->
+
+| what decides membership | measured | vs chance |
+|---|---:|---:|
+| Structure alone — peel the raw graph, no score cut-off | 0.0696 ring precision | 0.31× |
+| The model alone — held-out accounts | 0.3796 AUPRC | 1.693× |
+| **Score, prune, then peel** | **0.7292 ring precision** | **3.252×** |
+
+Order is what does the work. Peeled first, the densest subgraphs are large ordinary communities — people who happened to use the same promotion — and the queue lands below chance.
+
+<!-- whatitis:end -->
+
 ## Key Features
 
 | Feature | What it does |
@@ -287,6 +307,39 @@ accounts that did not exist**, because the two order files are independently
 re-indexed and I joined week-1 behaviour to week-2 labels through an id that
 means nothing across the boundary. It trained cleanly. It converged. All 27
 features had a fraud/normal ratio of exactly 1.000 — that's what gave it away.
+
+## Running this inside a payment stack
+
+What this needs is not features but **shared entities**: one table of
+`(account, entity_type, entity_id)`, the order history the account features are
+built from, and whatever cases have already been confirmed. An aggregator holds
+every entity type that matters — the device, the billing address, the card
+fingerprint, the e-mail domains on both sides, the browser.
+
+It runs as two loops: a nightly batch that builds, scores, prunes and peels, and
+an online lookup that answers for one account. The scorer is the swappable part
+— [`orbweaver/scoring/xgb_graph.py`](orbweaver/scoring/xgb_graph.py) keeps the
+extraction scorer-agnostic, so an existing transaction risk score can replace
+XGBoost and the ring layer sits *on top of* a risk stack rather than competing
+with it.
+
+<!-- integration:start -->
+
+| | |
+|---|---|
+| **Labels needed to start** | 1,146 confirmed accounts — 0.5% of the training pool — already beats the base rate |
+| **Online path** | `/check` answers in 0.01 ms at the median and 0.059 ms at p95 — a read of the nightly pass, not a graph computation |
+| **Nightly path** | anchored extraction, so 44% of tonight's rings are a case that was already open yesterday rather than a fresh queue every morning |
+| **On a card processor's graph** | the same pipeline, unchanged: 0.5079 ring precision at 18.138× the base rate, at 0.969 good cards flagged per fraudulent one |
+| **What one merchant cannot see** | the platform arm surfaces 681 accounts at 0.9956 precision; drop the relation that spans businesses and the merchant arm surfaces 1,856 at 0.9488 |
+
+**What it does not solve.**
+
+- **The address relation is the risk.** It is at once the most informative edge and the thing that legitimately ties a building together. On delivery data the hostel test touches 2 of 2,446 legitimate co-located groups; on card data its apartment analogue touches 4 of 7. That test has to be rerun on whatever data this meets next.
+- **An adaptive attacker degrades it.** Splitting every ring into cells of 3 takes ring precision from 0.7292 to 0.4539.
+- **It is a queue, not a net.** Ring recall is 0.0036 by construction — this surfaces a few hundred accounts worth reviewing, not the population.
+
+<!-- integration:end -->
 
 ## Deployment & Infrastructure
 
