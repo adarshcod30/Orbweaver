@@ -3888,6 +3888,25 @@ def update_readme(cfg, score, ring, views) -> Path | None:
                  f"{s_['final_night']['ring_precision']} precision against "
                  f"{g_.get('final_night_precision')} for the cost of a case id |")
 
+    # Where the base rate in the second row comes from. Ring precision counts
+    # only labelled ring members, so the rate it is compared against has to
+    # count only labelled accounts too - the alternative convention would
+    # divide a labelled-only numerator by every account on the platform and
+    # report a lift several times larger for the same result.
+    lab_n = sum(b["n"] for k, b in (score or {}).get("results", {}).items()
+                if k.endswith("__labelled_only"))
+    fraud_n = cell.get("total_fraud_in_scope") if cell else None
+    if lab_n and fraud_n:
+        L.append("")
+        L.append(f"**Where the base rate comes from.** {fraud_n:,} of the "
+                 f"{lab_n:,} accounts carrying a label at all are fraud — "
+                 f"{fraud_n:,} / {lab_n:,} = {base}. Unlabelled accounts are "
+                 f"left out of the denominator rather than counted as normal, "
+                 f"because ring precision counts only labelled members and the "
+                 f"two have to be measured the same way. The other convention "
+                 f"is reported beside this one in "
+                 f"[docs/results.md](docs/results.md#account-scoring).")
+
     L += ["", end]
 
     head, rest = text.split(start, 1)

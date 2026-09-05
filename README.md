@@ -253,6 +253,8 @@ figures: **[docs/results.md](docs/results.md)**.
 | Spreading what few labels there are | Fast Belief Propagation, no fitted model: 0.4615 held-out AUPRC at full labels, 0.9886 ring precision pruning on its beliefs alone |
 | A ring you can find again tomorrow | 44% of final rings had a case open the night before (global peeling: 4%); 0.7167 precision against 0.7292 for the cost of a case id |
 
+**Where the base rate comes from.** 68,533 of the 305,617 accounts carrying a label at all are fraud — 68,533 / 305,617 = 0.2242. Unlabelled accounts are left out of the denominator rather than counted as normal, because ring precision counts only labelled members and the two have to be measured the same way. The other convention is reported beside this one in [docs/results.md](docs/results.md#account-scoring).
+
 <!-- results:end -->
 
 ### The thirteen investigations — including the four that did not work
