@@ -44,10 +44,3 @@ build/
 
 # scratch figures; the final ones under docs/figures are kept
 docs/figures/_scratch/
-
-# local agent and editor files, never committed
-.claude/
-.claude.json
-CLAUDE.local.md
-CLAUDE.md
-AGENTS.md
