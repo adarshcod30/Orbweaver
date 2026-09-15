@@ -44,3 +44,7 @@ build/
 
 # scratch figures; the final ones under docs/figures are kept
 docs/figures/_scratch/
+
+# secrets, build output and local noise
+.env.local
+*.log
